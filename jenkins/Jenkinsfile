@@ -1,0 +1,117 @@
+pipeline {
+    agent any
+
+    environment {
+
+        // URL Lambda que envía notificaciones a Teams
+        LAMBDA_NOTIFY_URL = "https://api.example.com/notify"
+
+        // Jira
+        JIRA_URL = "https://tuempresa.atlassian.net"
+        JIRA_PROJECT = "DEVOPS"
+
+        // credenciales Jenkins
+        JIRA_CREDENTIALS = credentials('jira-api-token')
+
+    }
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                git branch: 'develop',
+                url: 'https://github.com/tu-org/devops-cicd-platform.git'
+            }
+        }
+
+        stage('Build') {
+            steps {
+                echo "Ejecutando build..."
+                sh 'echo Build ejecutado'
+            }
+        }
+
+        stage('Test') {
+            steps {
+                echo "Ejecutando tests..."
+                sh 'echo Tests ejecutados'
+            }
+        }
+
+        stage('Deploy QA') {
+            steps {
+                echo "Deploy a QA"
+                sh './scripts/deploy-qa.sh'
+            }
+        }
+    }
+
+    post {
+
+        success {
+
+            script {
+
+                echo "Deploy exitoso → Notificando a Teams"
+
+                sh """
+                curl -X POST ${LAMBDA_NOTIFY_URL} \
+                -H "Content-Type: application/json" \
+                -d '{
+                    "status": "SUCCESS",
+                    "environment": "QA",
+                    "message": "Deploy exitoso en QA",
+                    "build": "${BUILD_NUMBER}"
+                }'
+                """
+
+            }
+
+        }
+
+        failure {
+
+            script {
+
+                echo "Pipeline falló → Creando ticket en Jira"
+
+                def response = sh(
+                    script: """
+                    curl -s -u ${JIRA_CREDENTIALS_USR}:${JIRA_CREDENTIALS_PSW} \
+                    -X POST \
+                    -H "Content-Type: application/json" \
+                    --data '{
+                        "fields": {
+                            "project": {"key": "${JIRA_PROJECT}"},
+                            "summary": "Falla en pipeline Jenkins build ${BUILD_NUMBER}",
+                            "description": "El build falló en Jenkins. Revisar logs.",
+                            "issuetype": {"name": "Bug"}
+                        }
+                    }' \
+                    ${JIRA_URL}/rest/api/3/issue
+                    """,
+                    returnStdout: true
+                ).trim()
+
+                echo "Ticket creado: ${response}"
+
+                echo "Notificando falla a Teams"
+
+                sh """
+                curl -X POST ${LAMBDA_NOTIFY_URL} \
+                -H "Content-Type: application/json" \
+                -d '{
+                    "status": "FAILED",
+                    "environment": "QA",
+                    "message": "Build falló. Ticket Jira creado",
+                    "build": "${BUILD_NUMBER}"
+                }'
+                """
+
+            }
+
+        }
+
+    }
+
+}
