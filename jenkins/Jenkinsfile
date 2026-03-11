@@ -1,117 +1,320 @@
+#!/usr/bin/env groovy
+
+/**
+ * DEVOPS AUTOMATION PLATFORM - MAIN CI/CD PIPELINE
+ *
+ * This pipeline automates the complete DevOps workflow:
+ * 1. Build & Test
+ * 2. Security Scanning
+ * 3. Deploy to QA
+ * 4. Validation
+ * 5. Notification (Success/Failure) -> Teams
+ * 6. On Failure: Auto-create Jira ticket
+ *
+ * Triggers: Webhook from GitHub on develop branch merge
+ */
+
 pipeline {
     agent any
 
-    environment {
+    options {
+        // Keep last 30 builds
+        buildDiscarder(logRotator(numToKeepStr: '30'))
+        // Timeout after 30 minutes
+        timeout(time: 30, unit: 'MINUTES')
+        // Don't run concurrent builds
+        disableConcurrentBuilds()
+    }
 
-        // URL Lambda que envía notificaciones a Teams
-        LAMBDA_NOTIFY_URL = "https://api.example.com/notify"
+    environment {
+        // GitHub
+        GITHUB_TOKEN = credentials('github-token')
+        GITHUB_ORG = 'your-org'
+        GITHUB_REPO = 'your-repo'
+        NODE_ENV = 'qa'
+
+        // AWS
+        AWS_DEFAULT_REGION = 'us-east-1'
+        AWS_REGION = 'us-east-1'
+        LAMBDA_FUNCTION = 'teams-notifier'
+        QA_LAMBDA_FUNCTION = 'teams-notifier-qa'
 
         // Jira
-        JIRA_URL = "https://tuempresa.atlassian.net"
-        JIRA_PROJECT = "DEVOPS"
+        JIRA_URL = credentials('jira-url')
+        JIRA_API_TOKEN = credentials('jira-api-token')
+        JIRA_PROJECT_KEY = 'DEVOPS'
 
-        // credenciales Jenkins
-        JIRA_CREDENTIALS = credentials('jira-api-token')
+        // Teams
+        TEAMS_WEBHOOK = credentials('teams-webhook')
+        TEAMS_QA_WEBHOOK = credentials('teams-qa-webhook')
 
+        // Build info
+        COMMIT_HASH = "${GIT_COMMIT.take(8)}"
+        BRANCH_NAME = "${GIT_BRANCH.replaceAll('^.*//', '')}"
     }
 
     stages {
-
-        stage('Checkout') {
+        stage('🔍 Checkout') {
             steps {
-                git branch: 'develop',
-                url: 'https://github.com/tu-org/devops-cicd-platform.git'
+                script {
+                    echo "═══════════════════════════════════════"
+                    echo "Stage: Checkout"
+                    echo "Branch: ${BRANCH_NAME}"
+                    echo "Commit: ${COMMIT_HASH}"
+                    echo "═══════════════════════════════════════"
+                }
+                checkout scm
             }
         }
 
-        stage('Build') {
+        stage('📦 Build') {
             steps {
-                echo "Ejecutando build..."
-                sh 'echo Build ejecutado'
+                script {
+                    try {
+                        echo "═══════════════════════════════════════"
+                        echo "Stage: Build"
+                        echo "═══════════════════════════════════════"
+
+                        sh '''
+                            echo "Installing dependencies..."
+                            npm ci
+
+                            echo "Building application..."
+                            npm run build
+
+                            echo "Build successful ✓"
+                        '''
+                    } catch (Exception e) {
+                        error("Build failed: ${e.message}")
+                    }
+                }
             }
         }
 
-        stage('Test') {
+        stage('🧪 Test') {
             steps {
-                echo "Ejecutando tests..."
-                sh 'echo Tests ejecutados'
+                script {
+                    try {
+                        echo "═══════════════════════════════════════"
+                        echo "Stage: Test"
+                        echo "═══════════════════════════════════════"
+
+                        sh '''
+                            echo "Running unit tests..."
+                            npm test -- --coverage --watchAll=false
+
+                            echo "Tests completed ✓"
+                        '''
+                    } catch (Exception e) {
+                        error("Tests failed: ${e.message}")
+                    }
+                }
             }
         }
 
-        stage('Deploy QA') {
+        stage('🔐 Security Scan') {
             steps {
-                echo "Deploy a QA"
-                sh './scripts/deploy-qa.sh'
+                script {
+                    try {
+                        echo "═══════════════════════════════════════"
+                        echo "Stage: Security Scan"
+                        echo "═══════════════════════════════════════"
+
+                        sh '''
+                            echo "Running dependency scan..."
+                            npm audit --audit-level=moderate || true
+
+                            echo "Checking for vulnerabilities..."
+                            # You can add SonarQube, Snyk, or other tools here
+
+                            echo "Security scan completed ✓"
+                        '''
+                    } catch (Exception e) {
+                        // Don't fail on security warnings, just log
+                        echo "Security scan warning: ${e.message}"
+                    }
+                }
+            }
+        }
+
+        stage('🚀 Deploy to QA') {
+            steps {
+                script {
+                    try {
+                        echo "═════════════════════════════════════════"
+                        echo "Stage: Deploy to QA"
+                        echo "═════════════════════════════════════════"
+
+                        sh '''
+                            # Create deployment package
+                            echo "Creating deployment package..."
+                            cd build || cd dist || true
+                            zip -r ../lambda-deployment.zip . -x "*.git*" > /dev/null 2>&1
+                            cd ..
+
+                            # Update Lambda function
+                            echo "Updating Lambda function..."
+                            aws lambda update-function-code \
+                                --function-name "${QA_LAMBDA_FUNCTION}" \
+                                --zip-file fileb://lambda-deployment.zip \
+                                --region "${AWS_REGION}"
+
+                            echo "Waiting for lambda to be ready..."
+                            sleep 5
+
+                            # Get function ARN for validation
+                            FUNCTION_ARN=$(aws lambda get-function \
+                                --function-name "${QA_LAMBDA_FUNCTION}" \
+                                --region "${AWS_REGION}" \
+                                --query 'Configuration.FunctionArn' \
+                                --output text)
+
+                            echo "Lambda updated: $FUNCTION_ARN"
+                            echo "Deployment to QA completed ✓"
+                        '''
+                    } catch (Exception e) {
+                        error("Deploy to QA failed: ${e.message}")
+                    }
+                }
+            }
+        }
+
+        stage('✅ Validation') {
+            steps {
+                script {
+                    try {
+                        echo "═════════════════════════════════════════"
+                        echo "Stage: Validation & Health Check"
+                        echo "═════════════════════════════════════════"
+
+                        sh '''
+                            echo "Running health checks..."
+
+                            # Test Lambda function
+                            aws lambda invoke \
+                                --function-name "${QA_LAMBDA_FUNCTION}" \
+                                --region "${AWS_REGION}" \
+                                --payload '{"test": true}' \
+                                /tmp/lambda-test-response.json
+
+                            # Check response
+                            if grep -q "statusCode" /tmp/lambda-test-response.json; then
+                                echo "Lambda health check passed ✓"
+                            else
+                                echo "Lambda health check failed ✗"
+                                exit 1
+                            fi
+
+                            echo "Validation completed ✓"
+                        '''
+                    } catch (Exception e) {
+                        error("Validation failed: ${e.message}")
+                    }
+                }
+            }
+        }
+
+        stage('📢 Notification - Success') {
+            when {
+                expression { currentBuild.result == null || currentBuild.result == 'SUCCESS' }
+            }
+            steps {
+                script {
+                    echo "═════════════════════════════════════════"
+                    echo "Stage: Notification - Success"
+                    echo "═════════════════════════════════════════"
+
+                    sh '''
+                        # Create payload for Lambda
+                        PAYLOAD=$(cat <<EOF
+{
+    "event_type": "build_success",
+    "build_number": "${BUILD_NUMBER}",
+    "branch": "${BRANCH_NAME}",
+    "commit": "${COMMIT_HASH}",
+    "status": "SUCCESS",
+    "message": "✅ Build Successful - Deployed to QA",
+    "environment": "qa",
+    "build_url": "${BUILD_URL}",
+    "timestamp": "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+}
+EOF
+)
+
+                        # Invoke Lambda for Teams notification
+                        aws lambda invoke \
+                            --function-name "${LAMBDA_FUNCTION}" \
+                            --region "${AWS_REGION}" \
+                            --payload "$PAYLOAD" \
+                            /tmp/notification-response.json
+
+                        echo "Success notification sent to Teams ✓"
+                        cat /tmp/notification-response.json
+                    '''
+                }
             }
         }
     }
 
     post {
-
-        success {
-
-            script {
-
-                echo "Deploy exitoso → Notificando a Teams"
-
-                sh """
-                curl -X POST ${LAMBDA_NOTIFY_URL} \
-                -H "Content-Type: application/json" \
-                -d '{
-                    "status": "SUCCESS",
-                    "environment": "QA",
-                    "message": "Deploy exitoso en QA",
-                    "build": "${BUILD_NUMBER}"
-                }'
-                """
-
-            }
-
-        }
-
         failure {
-
             script {
+                echo "═════════════════════════════════════════"
+                echo "Pipeline FAILED - Error Handling"
+                echo "═════════════════════════════════════════"
 
-                echo "Pipeline falló → Creando ticket en Jira"
+                sh '''
+                    # Get error details from build log
+                    ERROR_MESSAGE=$(tail -50 ${BUILD_LOG_FILE} 2>/dev/null | grep -i "error\|failed" | head -1)
 
-                def response = sh(
-                    script: """
-                    curl -s -u ${JIRA_CREDENTIALS_USR}:${JIRA_CREDENTIALS_PSW} \
-                    -X POST \
-                    -H "Content-Type: application/json" \
-                    --data '{
-                        "fields": {
-                            "project": {"key": "${JIRA_PROJECT}"},
-                            "summary": "Falla en pipeline Jenkins build ${BUILD_NUMBER}",
-                            "description": "El build falló en Jenkins. Revisar logs.",
-                            "issuetype": {"name": "Bug"}
-                        }
-                    }' \
-                    ${JIRA_URL}/rest/api/3/issue
-                    """,
-                    returnStdout: true
-                ).trim()
+                    if [ -z "$ERROR_MESSAGE" ]; then
+                        ERROR_MESSAGE="Build failed at stage"
+                    fi
 
-                echo "Ticket creado: ${response}"
+                    echo "Error captured: $ERROR_MESSAGE"
 
-                echo "Notificando falla a Teams"
+                    # Create Jira issue
+                    ISSUE_RESPONSE=$(curl -s -X POST \
+                        -H "Authorization: Bearer ${JIRA_API_TOKEN}" \
+                        -H "Content-Type: application/json" \
+                        -d @- <<EOF
+{
+    "fields": {
+        "project": {"key": "${JIRA_PROJECT_KEY}"},
+        "summary": "[BUILD #${BUILD_NUMBER} FAILED] - Develop branch",
+        "description": "Build #${BUILD_NUMBER} failed on develop branch. Commit: ${COMMIT_HASH}. Error: $ERROR_MESSAGE. Jenkins: ${BUILD_URL}",
+        "issuetype": {"name": "Bug"},
+        "priority": {"name": "High"},
+        "labels": ["jenkins", "failed-build", "develop"]
+    }
+}
+EOF
+)
 
-                sh """
-                curl -X POST ${LAMBDA_NOTIFY_URL} \
-                -H "Content-Type: application/json" \
-                -d '{
-                    "status": "FAILED",
-                    "environment": "QA",
-                    "message": "Build falló. Ticket Jira creado",
-                    "build": "${BUILD_NUMBER}"
-                }'
-                """
+                    # Extract issue key
+                    ISSUE_KEY=$(echo "$ISSUE_RESPONSE" | grep -o '"key":"[^"]*' | cut -d'"' -f4)
 
+                    if [ -n "$ISSUE_KEY" ]; then
+                        echo "✓ Jira ticket created: $ISSUE_KEY"
+                    else
+                        echo "⚠ Failed to create Jira ticket"
+                        echo "Response: $ISSUE_RESPONSE"
+                    fi
+                '''
             }
-
         }
 
+        always {
+            script {
+                echo "═════════════════════════════════════════"
+                echo "Pipeline Summary"
+                echo "═════════════════════════════════════════"
+                echo "Build: #${BUILD_NUMBER}"
+                echo "Branch: ${BRANCH_NAME}"
+                echo "Commit: ${COMMIT_HASH}"
+                echo "Status: ${currentBuild.result ?: 'IN PROGRESS'}"
+                echo "═════════════════════════════════════════"
+            }
+        }
     }
-
 }

@@ -1,0 +1,34 @@
+# ===== AWS Configuration =====
+aws_region = "us-east-1"
+
+# ===== AWS Infrastructure (Existing Resources) =====
+# Estos valores ya existen en tu AWS y se referencian (no se crean)
+vpc_id              = "vpc-0bf11b72e3d6c092b"      # Tu existing VPC
+jenkins_instance_id = "i-0020a9bd1ba26e28a"       # Tu Jenkins EC2 instance (PRIVATE)
+private_subnet_id   = "subnet-0466d9078c5271b99"  # Jenkins subnet (private, existente)
+
+# ===== Public Infrastructure (Created by Terraform) =====
+# NOTA: Los siguientes valores se crean automáticamente en Terraform
+# - Internet Gateway
+# - 2 Public Subnets (10.30.0.0/24, 10.30.1.0/24)
+# - Route Table público
+# - Rutas (0.0.0.0/0 → IGW)
+# NO necesitas proporcionarlos manualmente
+
+# ===== GitHub Configuration (REQUIRED - REEMPLAZA) =====
+github_token = "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"  # Generate: https://github.com/settings/tokens
+github_org   = "your-organization"                   # Tu organización GitHub
+github_repo  = "devops-automation-platform"          # Tu repositorio GitHub
+
+# ===== Jira Configuration (REQUIRED - REEMPLAZA) =====
+jira_url         = "https://your-company.atlassian.net"  # Tu URL Jira
+jira_api_token   = "xxxxxxxxxxxxxxxxxxxxxx"              # Generate: https://id.atlassian.com/manage-profile/security/api-tokens
+jira_project_key = "DEVOPS"                              # Tu project key en Jira
+jira_assignee_user = "qa-team"                           # Usuario o equipo asignado
+
+# ===== Teams Configuration (REQUIRED - REEMPLAZA) =====
+teams_webhook_url    = "https://outlook.webhook.office.com/webhookb2/..."  # Teams General channel
+teams_qa_webhook_url = "https://outlook.webhook.office.com/webhookb2/..."  # Teams QA channel
+
+# ===== QA Environment =====
+qa_environment_url = "https://qa-api.example.com"
