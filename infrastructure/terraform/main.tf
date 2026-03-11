@@ -20,9 +20,10 @@ module "lambda" {
 module "api" {
   source = "./modules/apigateway"
 
-  lambda_invoke_arn = module.lambda.invoke_arn
-  project_name      = var.project_name
-  common_tags       = var.common_tags
+  lambda_invoke_arn      = module.lambda.invoke_arn
+  jira_lambda_invoke_arn = module.jira_handler.jira_handler_invoke_arn
+  project_name           = var.project_name
+  common_tags            = var.common_tags
 }
 
 module "jira_handler" {

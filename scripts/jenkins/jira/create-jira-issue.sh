@@ -38,7 +38,7 @@ ERROR_SANITIZED=$(echo "$ERROR_MESSAGE" | sed 's/"//g' | cut -c1-500)
 echo "📋 Creating Jira issue..."
 
 ISSUE_RESPONSE=$(curl -s -X POST \
-    "${JIRA_URL}/rest/api/3/issues" \
+    "${JIRA_URL}/rest/api/3/issue" \
     -H "Authorization: Bearer ${JIRA_API_TOKEN}" \
     -H "Content-Type: application/json" \
     -d @- <<EOF
@@ -159,7 +159,7 @@ if [ -n "$ISSUE_KEY" ] && [ "$ISSUE_KEY" != "null" ]; then
         echo "👤 Attempting to assign issue..."
         
         ASSIGN_RESPONSE=$(curl -s -X PUT \
-            "${JIRA_URL}/rest/api/3/issues/${ISSUE_KEY}/assignee" \
+            "${JIRA_URL}/rest/api/3/issue/${ISSUE_KEY}/assignee" \
             -H "Authorization: Bearer ${JIRA_API_TOKEN}" \
             -H "Content-Type: application/json" \
             -d @- <<EOF

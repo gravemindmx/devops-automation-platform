@@ -1,5 +1,10 @@
 variable "lambda_invoke_arn" {
-  description = "Lambda function invoke ARN for API Gateway integration"
+  description = "Invoke ARN of the teams-notifier Lambda (POST /notify)"
+  type        = string
+}
+
+variable "jira_lambda_invoke_arn" {
+  description = "Invoke ARN of the jira-event-handler Lambda (POST /jira)"
   type        = string
 }
 

@@ -17,6 +17,24 @@
 pipeline {
     agent any
 
+    parameters {
+        booleanParam(
+            name: 'CREATE_BRANCH',
+            defaultValue: false,
+            description: 'Create a new GitHub feature branch from develop'
+        )
+        string(
+            name: 'BRANCH_TO_CREATE',
+            defaultValue: '',
+            description: 'Branch name to create (e.g. feature/PROJ-123-description)'
+        )
+    }
+
+    triggers {
+        // Triggered automatically by GitHub webhook on push/merge to develop
+        githubPush()
+    }
+
     options {
         // Keep last 30 builds
         buildDiscarder(logRotator(numToKeepStr: '30'))
@@ -38,6 +56,8 @@ pipeline {
         AWS_REGION = 'us-east-1'
         LAMBDA_FUNCTION = 'teams-notifier'
         QA_LAMBDA_FUNCTION = 'teams-notifier-qa'
+        JIRA_HANDLER_FUNCTION = 'jira-event-handler'
+        QA_JIRA_HANDLER_FUNCTION = 'jira-event-handler-qa'
 
         // Jira
         JIRA_URL = credentials('jira-url')
@@ -67,6 +87,34 @@ pipeline {
             }
         }
 
+        stage('🌿 Create GitHub Branch') {
+            when {
+                expression { params.CREATE_BRANCH == true && params.BRANCH_TO_CREATE?.trim() }
+            }
+            steps {
+                script {
+                    echo "═══════════════════════════════════════"
+                    echo "Stage: Create GitHub Branch"
+                    echo "Branch: ${params.BRANCH_TO_CREATE}"
+                    echo "═══════════════════════════════════════"
+
+                    withCredentials([string(credentialsId: 'github-token', variable: 'GH_TOKEN')]) {
+                        sh """
+                            git config user.email "jenkins@${GITHUB_ORG}.com"
+                            git config user.name "Jenkins CI"
+                            git remote set-url origin https://\${GH_TOKEN}@github.com/${GITHUB_ORG}/${GITHUB_REPO}.git
+                            git fetch origin develop
+                            git checkout develop
+                            git pull origin develop
+                            git checkout -b ${params.BRANCH_TO_CREATE}
+                            git push origin ${params.BRANCH_TO_CREATE}
+                            echo "Branch ${params.BRANCH_TO_CREATE} created and pushed ✓"
+                        """
+                    }
+                }
+            }
+        }
+
         stage('📦 Build') {
             steps {
                 script {
@@ -76,11 +124,20 @@ pipeline {
                         echo "═══════════════════════════════════════"
 
                         sh '''
-                            echo "Installing dependencies..."
-                            npm ci
+                            echo "Installing deps for teams-notifier..."
+                            pip install -r services/teams-notifier/config/requirements.txt \
+                                -t services/teams-notifier/package/ --quiet
 
-                            echo "Building application..."
-                            npm run build
+                            echo "Installing deps for jira-event-handler..."
+                            pip install -r services/jira-event-handler/config/requirements.txt \
+                                -t services/jira-event-handler/package/ --quiet
+
+                            echo "Creating deployment packages..."
+                            cp -r services/teams-notifier/src/. services/teams-notifier/package/
+                            cd services/teams-notifier && zip -r teams-notifier.zip package/ -x "*.pyc" "*/__pycache__/*" > /dev/null 2>&1 && cd ../..
+
+                            cp -r services/jira-event-handler/src/. services/jira-event-handler/package/
+                            cd services/jira-event-handler && zip -r jira-handler.zip package/ -x "*.pyc" "*/__pycache__/*" > /dev/null 2>&1 && cd ../..
 
                             echo "Build successful ✓"
                         '''
@@ -100,8 +157,11 @@ pipeline {
                         echo "═══════════════════════════════════════"
 
                         sh '''
-                            echo "Running unit tests..."
-                            npm test -- --coverage --watchAll=false
+                            echo "Running tests for teams-notifier..."
+                            python -m pytest services/teams-notifier/tests/ -v --tb=short
+
+                            echo "Running tests for jira-event-handler..."
+                            python -m pytest services/jira-event-handler/tests/ -v --tb=short
 
                             echo "Tests completed ✓"
                         '''
@@ -146,30 +206,25 @@ pipeline {
                         echo "═════════════════════════════════════════"
 
                         sh '''
-                            # Create deployment package
-                            echo "Creating deployment package..."
-                            cd build || cd dist || true
-                            zip -r ../lambda-deployment.zip . -x "*.git*" > /dev/null 2>&1
-                            cd ..
-
-                            # Update Lambda function
-                            echo "Updating Lambda function..."
+                            # Deploy teams-notifier
+                            echo "Deploying teams-notifier to QA..."
                             aws lambda update-function-code \
                                 --function-name "${QA_LAMBDA_FUNCTION}" \
-                                --zip-file fileb://lambda-deployment.zip \
+                                --zip-file fileb://services/teams-notifier/teams-notifier.zip \
                                 --region "${AWS_REGION}"
 
-                            echo "Waiting for lambda to be ready..."
-                            sleep 5
+                            # Deploy jira-event-handler
+                            echo "Deploying jira-event-handler to QA..."
+                            aws lambda update-function-code \
+                                --function-name "${QA_JIRA_HANDLER_FUNCTION}" \
+                                --zip-file fileb://services/jira-event-handler/jira-handler.zip \
+                                --region "${AWS_REGION}"
 
-                            # Get function ARN for validation
-                            FUNCTION_ARN=$(aws lambda get-function \
+                            echo "Waiting for Lambdas to be ready..."
+                            aws lambda wait function-updated \
                                 --function-name "${QA_LAMBDA_FUNCTION}" \
-                                --region "${AWS_REGION}" \
-                                --query 'Configuration.FunctionArn' \
-                                --output text)
+                                --region "${AWS_REGION}"
 
-                            echo "Lambda updated: $FUNCTION_ARN"
                             echo "Deployment to QA completed ✓"
                         '''
                     } catch (Exception e) {
@@ -264,42 +319,66 @@ EOF
                 echo "═════════════════════════════════════════"
 
                 sh '''
-                    # Get error details from build log
-                    ERROR_MESSAGE=$(tail -50 ${BUILD_LOG_FILE} 2>/dev/null | grep -i "error\|failed" | head -1)
+                    ERROR_MESSAGE="Build #${BUILD_NUMBER} failed on ${BRANCH_NAME} (commit: ${COMMIT_HASH}). See: ${BUILD_URL}"
 
-                    if [ -z "$ERROR_MESSAGE" ]; then
-                        ERROR_MESSAGE="Build failed at stage"
-                    fi
+                    echo "Error: $ERROR_MESSAGE"
 
-                    echo "Error captured: $ERROR_MESSAGE"
-
-                    # Create Jira issue
+                    # Step 1: Create Jira ticket
                     ISSUE_RESPONSE=$(curl -s -X POST \
+                        "${JIRA_URL}/rest/api/3/issue" \
                         -H "Authorization: Bearer ${JIRA_API_TOKEN}" \
                         -H "Content-Type: application/json" \
                         -d @- <<EOF
 {
     "fields": {
         "project": {"key": "${JIRA_PROJECT_KEY}"},
-        "summary": "[BUILD #${BUILD_NUMBER} FAILED] - Develop branch",
-        "description": "Build #${BUILD_NUMBER} failed on develop branch. Commit: ${COMMIT_HASH}. Error: $ERROR_MESSAGE. Jenkins: ${BUILD_URL}",
+        "summary": "[BUILD #${BUILD_NUMBER} FAILED] ${BRANCH_NAME} - ${COMMIT_HASH}",
+        "description": "$ERROR_MESSAGE",
         "issuetype": {"name": "Bug"},
         "priority": {"name": "High"},
-        "labels": ["jenkins", "failed-build", "develop"]
+        "labels": ["jenkins", "failed-build", "${BRANCH_NAME}"]
     }
 }
 EOF
 )
 
-                    # Extract issue key
                     ISSUE_KEY=$(echo "$ISSUE_RESPONSE" | grep -o '"key":"[^"]*' | cut -d'"' -f4)
 
-                    if [ -n "$ISSUE_KEY" ]; then
+                    if [ -n "$ISSUE_KEY" ] && [ "$ISSUE_KEY" != "null" ]; then
                         echo "✓ Jira ticket created: $ISSUE_KEY"
+                        JIRA_BROWSE_URL="${JIRA_URL}/browse/${ISSUE_KEY}"
                     else
                         echo "⚠ Failed to create Jira ticket"
                         echo "Response: $ISSUE_RESPONSE"
+                        ISSUE_KEY="N/A"
+                        JIRA_BROWSE_URL=""
                     fi
+
+                    # Step 2: Notify Teams via Lambda
+                    FAILURE_PAYLOAD=$(cat <<PAYLOAD
+{
+    "event_type": "build_failure",
+    "build_number": "${BUILD_NUMBER}",
+    "branch": "${BRANCH_NAME}",
+    "commit": "${COMMIT_HASH}",
+    "status": "FAILED",
+    "message": "Build failed - see Jira ticket",
+    "error": "$ERROR_MESSAGE",
+    "jira_ticket": "$ISSUE_KEY",
+    "jira_url": "$JIRA_BROWSE_URL",
+    "build_url": "${BUILD_URL}",
+    "timestamp": "$(date -u +\'%Y-%m-%dT%H:%M:%SZ\')"
+}
+PAYLOAD
+)
+
+                    aws lambda invoke \
+                        --function-name "${LAMBDA_FUNCTION}" \
+                        --region "${AWS_REGION}" \
+                        --payload "$FAILURE_PAYLOAD" \
+                        /tmp/failure-notification.json
+
+                    echo "Failure notification sent to Teams ✓"
                 '''
             }
         }

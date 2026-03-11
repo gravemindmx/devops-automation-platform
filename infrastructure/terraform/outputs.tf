@@ -2,6 +2,11 @@ output "webhook_url" {
   value = module.api.api_endpoint
 }
 
+output "jira_webhook_url" {
+  description = "Endpoint to configure in Jira webhooks (POST /jira)"
+  value       = module.api.jira_webhook_url
+}
+
 # =========================================
 # Network Module Outputs
 # =========================================
