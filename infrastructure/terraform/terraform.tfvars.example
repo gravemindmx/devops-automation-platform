@@ -16,19 +16,23 @@ private_subnet_id   = "subnet-0466d9078c5271b99"  # Jenkins subnet (private, exi
 # NO necesitas proporcionarlos manualmente
 
 # ===== GitHub Configuration (REQUIRED - REEMPLAZA) =====
-github_token = "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"  # Generate: https://github.com/settings/tokens
 github_org   = "your-organization"                   # Tu organización GitHub
 github_repo  = "devops-automation-platform"          # Tu repositorio GitHub
 
 # ===== Jira Configuration (REQUIRED - REEMPLAZA) =====
 jira_url         = "https://your-company.atlassian.net"  # Tu URL Jira
-jira_api_token   = "xxxxxxxxxxxxxxxxxxxxxx"              # Generate: https://id.atlassian.com/manage-profile/security/api-tokens
 jira_project_key = "DEVOPS"                              # Tu project key en Jira
 jira_assignee_user = "qa-team"                           # Usuario o equipo asignado
 
 # ===== Teams Configuration (REQUIRED - REEMPLAZA) =====
-teams_webhook_url    = "https://outlook.webhook.office.com/webhookb2/..."  # Teams General channel
-teams_qa_webhook_url = "https://outlook.webhook.office.com/webhookb2/..."  # Teams QA channel
+# NOTA: Configura webhooks por variable de entorno (TF_VAR_teams_webhook_url y TF_VAR_teams_qa_webhook_url)
 
 # ===== QA Environment =====
 qa_environment_url = "https://qa-api.example.com"
+
+# ===== Secretos (NO versionar) =====
+# Exportar en tu shell antes de terraform plan/apply:
+#   TF_VAR_github_token
+#   TF_VAR_jira_api_token
+#   TF_VAR_teams_webhook_url
+#   TF_VAR_teams_qa_webhook_url

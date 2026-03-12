@@ -159,6 +159,36 @@ terraform apply tfplan
 terraform output   # Guardar webhook_url y jira_webhook_url
 ```
 
+### Recomendado — Secretos por entorno (sin `.tfvars`)
+
+Mantén secretos fuera de archivos versionados y cárgalos como variables de entorno `TF_VAR_*`.
+
+PowerShell (Windows):
+
+```powershell
+$env:TF_VAR_github_token = "<github_pat>"
+$env:TF_VAR_jira_api_token = "<jira_api_token>"
+$env:TF_VAR_teams_webhook_url = "<teams_webhook_general>"
+$env:TF_VAR_teams_qa_webhook_url = "<teams_webhook_qa>"
+
+terraform -chdir=infrastructure/terraform plan -out=tfplan
+terraform -chdir=infrastructure/terraform apply tfplan
+```
+
+Bash (Linux/macOS):
+
+```bash
+export TF_VAR_github_token="<github_pat>"
+export TF_VAR_jira_api_token="<jira_api_token>"
+export TF_VAR_teams_webhook_url="<teams_webhook_general>"
+export TF_VAR_teams_qa_webhook_url="<teams_webhook_qa>"
+
+terraform -chdir=infrastructure/terraform plan -out=tfplan
+terraform -chdir=infrastructure/terraform apply tfplan
+```
+
+En Jenkins, usa credenciales y expórtalas como `TF_VAR_*` durante el stage de Terraform.
+
 Outputs clave:
 
 | Output | Uso |

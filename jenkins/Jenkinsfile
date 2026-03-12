@@ -28,6 +28,16 @@ pipeline {
             defaultValue: '',
             description: 'Branch name to create (e.g. feature/PROJ-123-description)'
         )
+        booleanParam(
+            name: 'APPLY_TERRAFORM',
+            defaultValue: false,
+            description: 'Run terraform plan/apply before build stages'
+        )
+        string(
+            name: 'TERRAFORM_AUTO_APPROVE',
+            defaultValue: 'true',
+            description: 'Use true to auto-approve terraform apply'
+        )
     }
 
     triggers {
@@ -110,6 +120,43 @@ pipeline {
                             git push origin ${params.BRANCH_TO_CREATE}
                             echo "Branch ${params.BRANCH_TO_CREATE} created and pushed ✓"
                         """
+                    }
+                }
+            }
+        }
+
+        stage('🏗️ Terraform Plan/Apply') {
+            when {
+                expression { params.APPLY_TERRAFORM == true }
+            }
+            steps {
+                script {
+                    echo "═══════════════════════════════════════"
+                    echo "Stage: Terraform Plan/Apply"
+                    echo "═══════════════════════════════════════"
+
+                    withCredentials([
+                        string(credentialsId: 'github-token', variable: 'TF_VAR_github_token'),
+                        string(credentialsId: 'jira-url', variable: 'TF_VAR_jira_url'),
+                        string(credentialsId: 'jira-api-token', variable: 'TF_VAR_jira_api_token'),
+                        string(credentialsId: 'teams-webhook', variable: 'TF_VAR_teams_webhook_url'),
+                        string(credentialsId: 'teams-qa-webhook', variable: 'TF_VAR_teams_qa_webhook_url')
+                    ]) {
+                        sh '''
+                            set +x
+                            cd infrastructure/terraform
+
+                            terraform init
+                            terraform plan -out=tfplan
+
+                            if [ "${TERRAFORM_AUTO_APPROVE}" = "true" ]; then
+                                terraform apply -auto-approve tfplan
+                            else
+                                terraform apply tfplan
+                            fi
+
+                            echo "Terraform apply completed ✓"
+                        '''
                     }
                 }
             }
