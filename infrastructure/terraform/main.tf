@@ -13,6 +13,7 @@ module "lambda" {
   source = "./modules/lambda"
 
   teams_webhook_url = var.teams_webhook_url
+  lambda_zip_path   = "${path.root}/../../services/teams-notifier/teams-notifier.zip"
   project_name      = var.project_name
   common_tags       = var.common_tags
 }
@@ -32,6 +33,7 @@ module "jira_handler" {
   jira_url          = var.jira_url
   jira_api_token    = var.jira_api_token
   teams_webhook_url = var.teams_qa_webhook_url
+  lambda_zip_path   = "${path.root}/../../services/jira-event-handler/jira-handler.zip"
   project_name      = var.project_name
   common_tags       = var.common_tags
 }

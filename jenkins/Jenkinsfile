@@ -74,8 +74,6 @@ pipeline {
         GITHUB_TOKEN = credentials('github-token')
         GITHUB_ORG = 'gravemindmx'
         GITHUB_REPO = 'devops-automation-platform'
-        RESOLVED_GITHUB_ORG = ''
-        RESOLVED_GITHUB_REPO = ''
         NODE_ENV = 'qa'
         PYTHON_BIN = '/usr/bin/python3.11'
 
@@ -128,8 +126,8 @@ pipeline {
                             detectedRepo = matcher.group(2)
                         }
                     }
-                    def lockOrg = params.LOCK_GITHUB_ORG?.trim() ?: env.GITHUB_ORG?.trim()
-                    def lockRepo = params.LOCK_GITHUB_REPO?.trim() ?: env.GITHUB_REPO?.trim()
+                    def lockOrg = params.LOCK_GITHUB_ORG?.trim() ?: env.GITHUB_ORG?.trim() ?: 'gravemindmx'
+                    def lockRepo = params.LOCK_GITHUB_REPO?.trim() ?: env.GITHUB_REPO?.trim() ?: 'devops-automation-platform'
 
                     if (params.LOCK_SINGLE_REPO == true) {
                         if (!lockOrg || !lockRepo) {
@@ -562,13 +560,16 @@ PAYLOAD
 
         always {
             script {
+                def summaryOrg = env.RESOLVED_GITHUB_ORG?.trim() ?: params.LOCK_GITHUB_ORG?.trim() ?: env.GITHUB_ORG?.trim() ?: 'N/A'
+                def summaryRepo = env.RESOLVED_GITHUB_REPO?.trim() ?: params.LOCK_GITHUB_REPO?.trim() ?: env.GITHUB_REPO?.trim() ?: 'N/A'
+
                 echo "═════════════════════════════════════════"
                 echo "Pipeline Summary"
                 echo "═════════════════════════════════════════"
                 echo "Build: #${BUILD_NUMBER}"
                 echo "Branch: ${BRANCH_NAME}"
                 echo "Commit: ${COMMIT_HASH}"
-                echo "Repo: ${env.RESOLVED_GITHUB_ORG ?: 'N/A'}/${env.RESOLVED_GITHUB_REPO ?: 'N/A'}"
+                echo "Repo: ${summaryOrg}/${summaryRepo}"
                 echo "Status: ${currentBuild.result ?: 'IN PROGRESS'}"
                 echo "═════════════════════════════════════════"
             }

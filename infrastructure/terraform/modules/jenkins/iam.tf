@@ -47,8 +47,7 @@ resource "aws_iam_role_policy" "jenkins_instance_policy" {
           "ec2:DescribeVolumes",
           "ec2:DescribeTags"
         ]
-        Resource    = "*"
-        Description = "Describe EC2 resources"
+        Resource = "*"
       },
       {
         Sid    = "LambdaInvoke"
@@ -57,8 +56,7 @@ resource "aws_iam_role_policy" "jenkins_instance_policy" {
           "lambda:InvokeFunction",
           "lambda:ListFunctions"
         ]
-        Resource    = "*"
-        Description = "Invoke Lambda functions"
+        Resource = "*"
       },
       {
         Sid    = "S3Access"
@@ -68,8 +66,7 @@ resource "aws_iam_role_policy" "jenkins_instance_policy" {
           "s3:PutObject",
           "s3:ListBucket"
         ]
-        Resource    = "*"
-        Description = "S3 access for artifacts and builds"
+        Resource = "*"
       },
       {
         Sid    = "CloudWatchLogs"
@@ -79,8 +76,7 @@ resource "aws_iam_role_policy" "jenkins_instance_policy" {
           "logs:CreateLogStream",
           "logs:PutLogEvents"
         ]
-        Resource    = "arn:aws:logs:*:*:*"
-        Description = "CloudWatch Logs for Jenkins"
+        Resource = "arn:aws:logs:*:*:*"
       },
       {
         Sid    = "SSMParameterStore"
@@ -90,8 +86,7 @@ resource "aws_iam_role_policy" "jenkins_instance_policy" {
           "ssm:GetParameters",
           "ssm:GetParametersByPath"
         ]
-        Resource    = "*"
-        Description = "Access SSM Parameter Store for secrets"
+        Resource = "*"
       }
     ]
   })
