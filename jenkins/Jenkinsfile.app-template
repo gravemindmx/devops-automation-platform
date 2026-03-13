@@ -1,0 +1,214 @@
+#!/usr/bin/env groovy
+
+/**
+ * APP REPO - CI/CD PIPELINE TEMPLATE
+ *
+ * Este Jenkinsfile va en el REPO DE APLICACIÓN (repo 2).
+ * NO va en devops-automation-platform.
+ *
+ * Requisitos previos:
+ *   - Las Lambdas de notificaciones deben estar desplegadas (repo 1 ya lo hizo).
+ *   - Las mismas credenciales Jenkins del repo 1 aplican aquí:
+ *       github-token, jira-url, jira-api-token, teams-webhook, teams-qa-webhook
+ *
+ * Configura LAMBDA_NOTIFIER y JIRA_PROJECT_KEY según tu entorno.
+ */
+
+pipeline {
+    agent any
+
+    triggers {
+        githubPush()
+    }
+
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '30'))
+        timeout(time: 30, unit: 'MINUTES')
+        disableConcurrentBuilds()
+    }
+
+    environment {
+        // ── Identifica tu app ────────────────────────────────────────────────
+        APP_NAME      = 'mi-app'           // Cambia por el nombre de tu aplicación
+        AWS_REGION    = 'us-east-1'
+
+        // ── Lambda de notificaciones (desplegada por devops-automation-platform)
+        LAMBDA_NOTIFIER = 'teams-notifier' // Nombre de la función en AWS
+
+        // ── Jira ─────────────────────────────────────────────────────────────
+        JIRA_URL         = credentials('jira-url')
+        JIRA_API_TOKEN   = credentials('jira-api-token')
+        JIRA_PROJECT_KEY = 'DEVOPS'        // Cambia por tu project key
+
+        // ── Teams ─────────────────────────────────────────────────────────────
+        TEAMS_WEBHOOK    = credentials('teams-webhook')
+
+        // ── Build info ────────────────────────────────────────────────────────
+        COMMIT_HASH  = "${GIT_COMMIT.take(8)}"
+        BRANCH_NAME  = "${GIT_BRANCH.replaceAll('^.*/', '')}"
+    }
+
+    stages {
+
+        stage('🔍 Checkout') {
+            steps {
+                checkout scm
+                script {
+                    echo "═══════════════════════════════════════"
+                    echo "App:    ${APP_NAME}"
+                    echo "Branch: ${BRANCH_NAME}"
+                    echo "Commit: ${COMMIT_HASH}"
+                    echo "═══════════════════════════════════════"
+                }
+            }
+        }
+
+        // ── PERSONALIZA ESTE STAGE según el stack de tu app ──────────────────
+        stage('📦 Build') {
+            steps {
+                script {
+                    echo "Building ${APP_NAME}..."
+                    // Ejemplos según tu stack:
+                    //
+                    // Node.js:
+                    //   sh 'npm ci && npm run build'
+                    //
+                    // Python:
+                    //   sh 'pip install -r requirements.txt'
+                    //
+                    // Java/Maven:
+                    //   sh 'mvn clean package -DskipTests'
+                    //
+                    // Docker:
+                    //   sh 'docker build -t ${APP_NAME}:${COMMIT_HASH} .'
+                    //
+                    echo "Build completed ✓"
+                }
+            }
+        }
+
+        // ── PERSONALIZA ESTE STAGE según tu framework de tests ───────────────
+        stage('🧪 Test') {
+            steps {
+                script {
+                    echo "Testing ${APP_NAME}..."
+                    // Ejemplos:
+                    //
+                    // Node.js:
+                    //   sh 'npm test'
+                    //
+                    // Python:
+                    //   sh 'python -m pytest tests/ -v'
+                    //
+                    // Java/Maven:
+                    //   sh 'mvn test'
+                    //
+                    echo "Tests completed ✓"
+                }
+            }
+        }
+
+        stage('📢 Notificar Éxito') {
+            when {
+                expression { currentBuild.result == null || currentBuild.result == 'SUCCESS' }
+            }
+            steps {
+                script {
+                    sh """
+                        PAYLOAD=\$(cat <<EOF
+{
+    "event_type": "build_success",
+    "app": "${APP_NAME}",
+    "build_number": "${BUILD_NUMBER}",
+    "branch": "${BRANCH_NAME}",
+    "commit": "${COMMIT_HASH}",
+    "status": "SUCCESS",
+    "message": "✅ Build exitoso — ${APP_NAME}",
+    "build_url": "${BUILD_URL}",
+    "timestamp": "\$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+}
+EOF
+)
+                        aws lambda invoke \\
+                            --function-name "${LAMBDA_NOTIFIER}" \\
+                            --region "${AWS_REGION}" \\
+                            --payload "\$PAYLOAD" \\
+                            /tmp/notify-success.json
+
+                        echo "Notificación de éxito enviada a Teams ✓"
+                    """
+                }
+            }
+        }
+    }
+
+    post {
+        failure {
+            script {
+                sh '''
+                    ERROR_MSG="Build #${BUILD_NUMBER} falló en ${BRANCH_NAME} (${COMMIT_HASH}). Ver: ${BUILD_URL}"
+
+                    # Crear ticket Jira
+                    RESP=$(curl -s -X POST \
+                        "${JIRA_URL}/rest/api/3/issue" \
+                        -H "Authorization: Bearer ${JIRA_API_TOKEN}" \
+                        -H "Content-Type: application/json" \
+                        -d "{
+                            \\"fields\\": {
+                                \\"project\\": {\\"key\\": \\"${JIRA_PROJECT_KEY}\\"},
+                                \\"summary\\": \\"[BUILD FALLIDO] ${APP_NAME} #${BUILD_NUMBER} — ${BRANCH_NAME}\\",
+                                \\"description\\": \\"${ERROR_MSG}\\",
+                                \\"issuetype\\": {\\"name\\": \\"Bug\\"},
+                                \\"priority\\": {\\"name\\": \\"High\\"},
+                                \\"labels\\": [\\"jenkins\\", \\"failed-build\\"]
+                            }
+                        }")
+
+                    ISSUE_KEY=$(echo "$RESP" | grep -o '"key":"[^"]*' | cut -d'"' -f4)
+                    JIRA_LINK=""
+                    if [ -n "$ISSUE_KEY" ] && [ "$ISSUE_KEY" != "null" ]; then
+                        echo "Ticket Jira creado: $ISSUE_KEY"
+                        JIRA_LINK="${JIRA_URL}/browse/${ISSUE_KEY}"
+                    fi
+
+                    # Notificar Teams via Lambda
+                    PAYLOAD=$(cat <<EOF
+{
+    "event_type": "build_failure",
+    "app": "${APP_NAME}",
+    "build_number": "${BUILD_NUMBER}",
+    "branch": "${BRANCH_NAME}",
+    "commit": "${COMMIT_HASH}",
+    "status": "FAILED",
+    "message": "❌ Build fallido — ${APP_NAME}",
+    "jira_ticket": "${ISSUE_KEY}",
+    "jira_url": "${JIRA_LINK}",
+    "build_url": "${BUILD_URL}",
+    "timestamp": "$(date -u +\'%Y-%m-%dT%H:%M:%SZ\')"
+}
+EOF
+)
+                    aws lambda invoke \
+                        --function-name "${LAMBDA_NOTIFIER}" \
+                        --region "${AWS_REGION}" \
+                        --payload "$PAYLOAD" \
+                        /tmp/notify-failure.json
+
+                    echo "Notificación de fallo enviada a Teams ✓"
+                '''
+            }
+        }
+
+        always {
+            script {
+                echo "═══════════════════════════════════════"
+                echo "App:    ${APP_NAME}"
+                echo "Build:  #${BUILD_NUMBER}"
+                echo "Branch: ${BRANCH_NAME}"
+                echo "Commit: ${COMMIT_HASH}"
+                echo "Status: ${currentBuild.result ?: 'SUCCESS'}"
+                echo "═══════════════════════════════════════"
+            }
+        }
+    }
+}

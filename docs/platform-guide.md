@@ -373,6 +373,55 @@ Tipo exacto recomendado en Jenkins (para este Jenkinsfile):
 - `teams-webhook`: `Secret text`.
 - `teams-qa-webhook`: `Secret text`.
 
+Campos exactos al crear cada credencial `Secret text`:
+
+- `Scope`: `Global`.
+- `Secret`: el valor real (token o URL webhook).
+- `ID`: debe coincidir exactamente con el ID esperado por el Jenkinsfile.
+- `Description`: texto libre para identificar la credencial.
+
+Plantilla por credencial (copiar y crear una por una):
+
+1. GitHub token
+    - `Kind`: `Secret text`
+    - `Scope`: `Global`
+    - `Secret`: tu GitHub PAT (o token equivalente)
+    - `ID`: `github-token`
+    - `Description`: `GitHub PAT for pipeline git operations`
+
+2. Jira URL
+    - `Kind`: `Secret text`
+    - `Scope`: `Global`
+    - `Secret`: `https://tu-org.atlassian.net`
+    - `ID`: `jira-url`
+    - `Description`: `Jira base URL`
+
+3. Jira API token
+    - `Kind`: `Secret text`
+    - `Scope`: `Global`
+    - `Secret`: token API de Jira
+    - `ID`: `jira-api-token`
+    - `Description`: `Jira API token for incident creation`
+
+4. Teams webhook principal
+    - `Kind`: `Secret text`
+    - `Scope`: `Global`
+    - `Secret`: URL del Incoming Webhook del canal principal
+    - `ID`: `teams-webhook`
+    - `Description`: `Teams webhook for main notifications`
+
+5. Teams webhook QA
+    - `Kind`: `Secret text`
+    - `Scope`: `Global`
+    - `Secret`: URL del Incoming Webhook del canal QA
+    - `ID`: `teams-qa-webhook`
+    - `Description`: `Teams webhook for QA notifications`
+
+Validación rápida (obligatoria):
+
+- Si el `ID` no coincide exactamente, Jenkins fallará con "Credentials not found".
+- No uses `Secret file` para estas variables; este pipeline espera `Secret text`.
+
 Uso en pipeline:
 
 - `github-token`: creación de ramas y autenticación Git HTTPS.
@@ -466,6 +515,74 @@ Jira (System → WebHooks):
 1. Ejecuta el pipeline manualmente en Jenkins (sin parámetros) para validar Build/Test/Deploy QA.
 2. Fuerza una falla en una rama de prueba para confirmar creación de ticket Jira y notificación FAIL a Teams.
 3. Cambia el ticket a `Resolved`/`Done` para validar webhook Jira y notificación de resolución en Teams.
+
+---
+
+## 3.10 Setup con dos repositorios (Solo Jenkins)
+
+Aplica cuando tienes un repo de plataforma (este proyecto) y un repo de aplicación separado.
+
+### Rol de cada repo
+
+| Repo | Qué contiene | Qué hace el pipeline |
+|---|---|---|
+| `devops-automation-platform` (repo 1) | Lambdas, Terraform, Jenkinsfile principal | Despliega Lambdas y infraestructura en AWS |
+| Tu repo de app (repo 2) | Código de tu aplicación | Build/Test de la app y notifica usando las Lambdas del repo 1 |
+
+### Paso 1 — Preparar el repo de app
+
+1. Copia `jenkins/Jenkinsfile.app-template` de este repo al repo de tu app como `jenkins/Jenkinsfile`.
+2. Edita las variables al inicio del archivo:
+   - `APP_NAME`: nombre de tu aplicación.
+   - `LAMBDA_NOTIFIER`: nombre exacto de la función `teams-notifier` en AWS.
+   - `JIRA_PROJECT_KEY`: tu project key en Jira.
+   - `AWS_REGION`: región donde desplegaste las Lambdas.
+3. Personaliza los stages `Build` y `Test` según el stack de tu app (Node.js, Python, Java, etc.).
+4. Commit y push de `jenkins/Jenkinsfile` al repo de app.
+
+### Paso 2 — Crear el job en Jenkins para el repo de app
+
+En Jenkins → New Item → `app-piloto-ci` → Pipeline → OK:
+
+| Sección | Campo | Valor |
+|---|---|---|
+| General | GitHub project | ✅ activado |
+| General | Project URL | `https://github.com/<tu-org>/<tu-repo-app>/` |
+| Build Triggers | GitHub hook trigger | ✅ activado |
+| Pipeline | Definition | `Pipeline script from SCM` |
+| Pipeline | SCM | `Git` |
+| Pipeline | Repository URL | `https://github.com/<tu-org>/<tu-repo-app>.git` |
+| Pipeline | Credentials | `github-token` |
+| Pipeline | Branch | `*/develop` |
+| Pipeline | Script Path | `jenkins/Jenkinsfile` |
+
+Las credenciales `jira-url`, `jira-api-token`, `teams-webhook` ya están configuradas en Jenkins — este job las reutiliza automáticamente por ID.
+
+### Paso 3 — Agregar webhook en el repo de app
+
+En GitHub → repo de app → Settings → Webhooks → Add webhook:
+
+| Campo | Valor |
+|---|---|
+| Payload URL | `https://<jenkins-url>/github-webhook/` |
+| Content type | `application/json` |
+| Events | `Just the push event` |
+| Active | ✅ |
+
+### Flujo resultante
+
+```
+Repo 1 (devops-automation-platform)
+  merge a develop  →  Job: devops-platform-deploy
+                   →  Despliega Lambdas en AWS
+
+Repo 2 (tu app)
+  merge a develop  →  Job: app-piloto-ci
+                   →  Build + Test de la app
+                        │
+                    Éxito → Lambda teams-notifier → Teams ✅
+                    Fallo → Jira ticket + teams-notifier → Teams ❌
+```
 
 ---
 
