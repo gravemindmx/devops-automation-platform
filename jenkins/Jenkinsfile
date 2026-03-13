@@ -25,12 +25,12 @@ pipeline {
         )
         string(
             name: 'LOCK_GITHUB_ORG',
-            defaultValue: '',
+            defaultValue: 'gravemindmx',
             description: 'GitHub organization for single-repo lock mode'
         )
         string(
             name: 'LOCK_GITHUB_REPO',
-            defaultValue: '',
+            defaultValue: 'devops-automation-platform',
             description: 'GitHub repository for single-repo lock mode'
         )
         booleanParam(
@@ -357,6 +357,7 @@ pipeline {
                             aws lambda invoke \
                                 --function-name "${QA_LAMBDA_FUNCTION}" \
                                 --region "${AWS_REGION}" \
+                                --cli-binary-format raw-in-base64-out \
                                 --payload '{"test": true}' \
                                 /tmp/lambda-test-response.json
 
@@ -408,6 +409,7 @@ EOF
                         aws lambda invoke \
                             --function-name "${LAMBDA_FUNCTION}" \
                             --region "${AWS_REGION}" \
+                            --cli-binary-format raw-in-base64-out \
                             --payload "$PAYLOAD" \
                             /tmp/notification-response.json
 
@@ -483,8 +485,9 @@ PAYLOAD
                     aws lambda invoke \
                         --function-name "${LAMBDA_FUNCTION}" \
                         --region "${AWS_REGION}" \
+                        --cli-binary-format raw-in-base64-out \
                         --payload "$FAILURE_PAYLOAD" \
-                        /tmp/failure-notification.json
+                        /tmp/failure-notification.json || true
 
                     echo "Failure notification sent to Teams ✓"
                 '''
