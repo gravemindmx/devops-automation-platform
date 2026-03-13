@@ -8,6 +8,16 @@ variable "jira_lambda_invoke_arn" {
   type        = string
 }
 
+variable "lambda_function_name" {
+  description = "Function name of teams-notifier Lambda"
+  type        = string
+}
+
+variable "jira_lambda_function_name" {
+  description = "Function name of jira-event-handler Lambda"
+  type        = string
+}
+
 variable "project_name" {
   description = "Project name for resource naming"
   type        = string

@@ -62,7 +62,7 @@ resource "aws_apigatewayv2_stage" "default" {
 resource "aws_lambda_permission" "apigateway_invoke" {
   statement_id  = "AllowAPIGatewayInvoke"
   action        = "lambda:InvokeFunction"
-  function_name = split(":", var.lambda_invoke_arn)[6]
+  function_name = var.lambda_function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.webhook_api.execution_arn}/*"
 }
@@ -88,7 +88,7 @@ resource "aws_apigatewayv2_route" "jira_webhook" {
 resource "aws_lambda_permission" "jira_apigateway_invoke" {
   statement_id  = "AllowAPIGatewayInvokeJira"
   action        = "lambda:InvokeFunction"
-  function_name = split(":", var.jira_lambda_invoke_arn)[6]
+  function_name = var.jira_lambda_function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.webhook_api.execution_arn}/*"
 }
