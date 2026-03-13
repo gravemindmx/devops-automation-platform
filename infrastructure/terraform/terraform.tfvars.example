@@ -25,7 +25,21 @@ jira_project_key = "DEVOPS"                              # Tu project key en Jir
 jira_assignee_user = "qa-team"                           # Usuario o equipo asignado
 
 # ===== Teams Configuration (REQUIRED - REEMPLAZA) =====
-# NOTA: Configura webhooks por variable de entorno (TF_VAR_teams_webhook_url y TF_VAR_teams_qa_webhook_url)
+# IMPORTANTE:
+# - NO pongas valores reales aqui para evitar exponer secretos en Git.
+# - Terraform toma estas variables desde el entorno usando el prefijo TF_VAR_.
+#
+# Mapeo:
+#   TF_VAR_teams_webhook_url    -> variable "teams_webhook_url"
+#   TF_VAR_teams_qa_webhook_url -> variable "teams_qa_webhook_url"
+#
+# Ejemplo PowerShell (Windows):
+#   $env:TF_VAR_teams_webhook_url = "https://outlook.webhook.office.com/webhookb2/..."
+#   $env:TF_VAR_teams_qa_webhook_url = "https://outlook.webhook.office.com/webhookb2/..."
+#
+# Ejemplo Bash (Linux/macOS):
+#   export TF_VAR_teams_webhook_url="https://outlook.webhook.office.com/webhookb2/..."
+#   export TF_VAR_teams_qa_webhook_url="https://outlook.webhook.office.com/webhookb2/..."
 
 # ===== QA Environment =====
 qa_environment_url = "https://qa-api.example.com"
