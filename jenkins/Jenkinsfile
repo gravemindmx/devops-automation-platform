@@ -53,6 +53,11 @@ pipeline {
             defaultValue: 'true',
             description: 'Use true to auto-approve terraform apply'
         )
+        string(
+            name: 'JIRA_USER_EMAIL',
+            defaultValue: '',
+            description: 'Optional Jira user email. If provided, Jira ticket creation uses Basic auth (email + token).'
+        )
     }
 
     triggers {
@@ -89,6 +94,7 @@ pipeline {
         JIRA_URL = credentials('jira-url')
         JIRA_API_TOKEN = credentials('jira-api-token')
         JIRA_PROJECT_KEY = 'DEVOPS'
+        INFRA_READY = 'true'
 
         // Teams
         TEAMS_WEBHOOK = credentials('teams-webhook')
@@ -354,7 +360,11 @@ pipeline {
 
                         sh '''
                             echo "Running dependency scan..."
-                            npm audit --audit-level=moderate || true
+                            if command -v npm >/dev/null 2>&1; then
+                                npm audit --audit-level=moderate || true
+                            else
+                                echo "npm not installed on agent, skipping npm audit"
+                            fi
 
                             echo "Checking for vulnerabilities..."
                             # You can add SonarQube, Snyk, or other tools here
@@ -369,7 +379,53 @@ pipeline {
             }
         }
 
+        stage('🔎 Verify QA Infrastructure') {
+            steps {
+                script {
+                    def infraCheckStatus = sh(
+                        script: '''
+                            set +e
+                            aws lambda get-function \
+                                --function-name "${QA_LAMBDA_FUNCTION}" \
+                                --region "${AWS_REGION}" \
+                                >/dev/null 2>&1
+                            LAMBDA_STATUS=$?
+
+                            aws lambda get-function \
+                                --function-name "${QA_JIRA_HANDLER_FUNCTION}" \
+                                --region "${AWS_REGION}" \
+                                >/dev/null 2>&1
+                            JIRA_HANDLER_STATUS=$?
+
+                            if [ "$LAMBDA_STATUS" -eq 0 ] && [ "$JIRA_HANDLER_STATUS" -eq 0 ]; then
+                                exit 0
+                            fi
+
+                            exit 1
+                        ''',
+                        returnStatus: true
+                    )
+
+                    if (infraCheckStatus != 0) {
+                        if (params.APPLY_TERRAFORM == true) {
+                            error('QA Lambda infrastructure is still missing after Terraform stage. Verify terraform apply and AWS permissions.')
+                        }
+
+                        currentBuild.result = 'UNSTABLE'
+                        env.INFRA_READY = 'false'
+                        echo 'QA Lambda infrastructure not found. Skipping Deploy/Validation. Run once with APPLY_TERRAFORM=true to provision resources.'
+                    } else {
+                        env.INFRA_READY = 'true'
+                        echo 'QA Lambda infrastructure exists ✓'
+                    }
+                }
+            }
+        }
+
         stage('🚀 Deploy to QA') {
+            when {
+                expression { env.INFRA_READY == 'true' }
+            }
             steps {
                 script {
                     try {
@@ -407,6 +463,9 @@ pipeline {
         }
 
         stage('✅ Validation') {
+            when {
+                expression { env.INFRA_READY == 'true' }
+            }
             steps {
                 script {
                     try {
@@ -498,9 +557,16 @@ EOF
                     echo "Error: $ERROR_MESSAGE"
 
                     # Step 1: Create Jira ticket
+                    if [ -n "${JIRA_USER_EMAIL}" ]; then
+                        JIRA_AUTH_TOKEN=$(printf "%s:%s" "${JIRA_USER_EMAIL}" "${JIRA_API_TOKEN}" | base64 | tr -d '\\n')
+                        JIRA_AUTH_HEADER="Authorization: Basic ${JIRA_AUTH_TOKEN}"
+                    else
+                        JIRA_AUTH_HEADER="Authorization: Bearer ${JIRA_API_TOKEN}"
+                    fi
+
                     ISSUE_RESPONSE=$(curl -s -X POST \
                         "${JIRA_URL}/rest/api/3/issue" \
-                        -H "Authorization: Bearer ${JIRA_API_TOKEN}" \
+                        -H "$JIRA_AUTH_HEADER" \
                         -H "Content-Type: application/json" \
                         -d @- <<EOF
 {
