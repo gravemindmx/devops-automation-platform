@@ -72,8 +72,8 @@ pipeline {
     environment {
         // GitHub
         GITHUB_TOKEN = credentials('github-token')
-        GITHUB_ORG = ''
-        GITHUB_REPO = ''
+        GITHUB_ORG = 'gravemindmx'
+        GITHUB_REPO = 'devops-automation-platform'
         RESOLVED_GITHUB_ORG = ''
         RESOLVED_GITHUB_REPO = ''
         NODE_ENV = 'qa'

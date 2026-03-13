@@ -29,7 +29,7 @@ pipeline {
 
     environment {
         // ── Identifica tu app ────────────────────────────────────────────────
-        APP_NAME      = 'mi-app'           // Cambia por el nombre de tu aplicación
+        APP_NAME      = 'devops-automation-platform-test' // Repo de pruebas
         AWS_REGION    = 'us-east-1'
 
         // ── Lambda de notificaciones (desplegada por devops-automation-platform)

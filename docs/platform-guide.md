@@ -444,8 +444,8 @@ Si usarás Terraform desde Jenkins, ejecutar el job con:
 Para validar primero en un solo repositorio (piloto recomendado):
 
 - `LOCK_SINGLE_REPO=true`
-- `LOCK_GITHUB_ORG=<tu-org>`
-- `LOCK_GITHUB_REPO=<tu-repo-piloto>`
+- `LOCK_GITHUB_ORG=gravemindmx`
+- `LOCK_GITHUB_REPO=devops-automation-platform`
 
 Con este modo, el pipeline falla si el SCM del job apunta a otro repositorio.
 
@@ -547,11 +547,11 @@ En Jenkins → New Item → `app-piloto-ci` → Pipeline → OK:
 | Sección | Campo | Valor |
 |---|---|---|
 | General | GitHub project | ✅ activado |
-| General | Project URL | `https://github.com/<tu-org>/<tu-repo-app>/` |
+| General | Project URL | `https://github.com/iMony-Tech/devops-automation-platform-test/` |
 | Build Triggers | GitHub hook trigger | ✅ activado |
 | Pipeline | Definition | `Pipeline script from SCM` |
 | Pipeline | SCM | `Git` |
-| Pipeline | Repository URL | `https://github.com/<tu-org>/<tu-repo-app>.git` |
+| Pipeline | Repository URL | `https://github.com/iMony-Tech/devops-automation-platform-test.git` |
 | Pipeline | Credentials | `github-token` |
 | Pipeline | Branch | `*/develop` |
 | Pipeline | Script Path | `jenkins/Jenkinsfile` |
