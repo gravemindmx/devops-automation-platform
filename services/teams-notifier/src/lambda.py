@@ -14,7 +14,7 @@ import json
 import os
 import urllib3
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Dict, Any
 
 # Initialize clients
@@ -29,7 +29,7 @@ logger.setLevel(logging.INFO)
 
 
 def utc_now_iso() -> str:
-    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def lambda_handler(event, context):

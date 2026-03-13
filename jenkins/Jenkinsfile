@@ -163,6 +163,12 @@ pipeline {
                     if (!env.RESOLVED_GITHUB_REPO?.trim()) {
                         env.RESOLVED_GITHUB_REPO = env.GITHUB_REPO
                     }
+                    if (!env.RESOLVED_GITHUB_ORG?.trim()) {
+                        env.RESOLVED_GITHUB_ORG = 'gravemindmx'
+                    }
+                    if (!env.RESOLVED_GITHUB_REPO?.trim()) {
+                        env.RESOLVED_GITHUB_REPO = 'devops-automation-platform'
+                    }
 
                     echo "Single-repo lock mode: ${params.LOCK_SINGLE_REPO}"
                     echo "Resolved GitHub org: ${env.RESOLVED_GITHUB_ORG ?: 'N/A'}"
