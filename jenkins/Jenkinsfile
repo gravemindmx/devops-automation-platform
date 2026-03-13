@@ -156,6 +156,14 @@ pipeline {
                         error('Unable to resolve repository context. Set lock parameters or use GitHub SCM URL.')
                     }
 
+                    // Defensive fallback: some Jenkins setups do not expose parameter defaults reliably.
+                    if (!env.RESOLVED_GITHUB_ORG?.trim()) {
+                        env.RESOLVED_GITHUB_ORG = env.GITHUB_ORG
+                    }
+                    if (!env.RESOLVED_GITHUB_REPO?.trim()) {
+                        env.RESOLVED_GITHUB_REPO = env.GITHUB_REPO
+                    }
+
                     echo "Single-repo lock mode: ${params.LOCK_SINGLE_REPO}"
                     echo "Resolved GitHub org: ${env.RESOLVED_GITHUB_ORG ?: 'N/A'}"
                     echo "Resolved GitHub repo: ${env.RESOLVED_GITHUB_REPO ?: 'N/A'}"
@@ -275,6 +283,9 @@ pipeline {
                         echo "═══════════════════════════════════════"
 
                         sh '''
+                            # pytest is needed in Jenkins runtime for executing tests.
+                            python3 -m pip install --quiet pytest pytest-cov
+
                             echo "Running tests for teams-notifier..."
                             python3 -m pytest services/teams-notifier/tests/ -v --tb=short
 
