@@ -149,6 +149,31 @@ Esta sección está pensada para que cualquier persona pueda levantar el proyect
 - Git
 - Jenkins con plugins: **GitHub**, **Pipeline**, **Credentials Binding**
 
+Plugins Jenkins recomendados para este proyecto:
+
+Requeridos (mínimo para ejecutar el pipeline actual):
+
+- Git plugin
+- GitHub plugin
+- Pipeline
+- Pipeline: Stage View
+- Credentials
+- Credentials Binding
+- SSH Agent (si usas autenticación por SSH hacia GitHub)
+
+Muy recomendados (operación estable):
+
+- Timestamper (timestamps en logs)
+- ANSI Color (salida más legible)
+- Workspace Cleanup (limpieza de workspace)
+
+Requeridos para migrar a Organization Folder (multirepo):
+
+- GitHub Branch Source
+- Branch API
+- SCM API
+- Folder plugin
+
 Validación rápida local:
 
 ```bash
@@ -338,6 +363,22 @@ En **Manage Jenkins → Credentials**, crear:
 | `teams-webhook` | Secret text | Webhook Teams canal principal |
 | `teams-qa-webhook` | Secret text | Webhook Teams canal QA |
 
+Tipo exacto recomendado en Jenkins (para este Jenkinsfile):
+
+- Scope: `Global`.
+- Dominio: `Global credentials (unrestricted)`.
+- `github-token`: `Secret text`.
+- `jira-url`: `Secret text`.
+- `jira-api-token`: `Secret text`.
+- `teams-webhook`: `Secret text`.
+- `teams-qa-webhook`: `Secret text`.
+
+Uso en pipeline:
+
+- `github-token`: creación de ramas y autenticación Git HTTPS.
+- `jira-url` + `jira-api-token`: creación automática de ticket en falla.
+- `teams-webhook` + `teams-qa-webhook`: notificaciones de build/despliegue.
+
 Luego crear el job Pipeline:
 
 1. **New Item → Pipeline**
@@ -365,7 +406,10 @@ Objetivo: activar descubrimiento por organización sin apagar tu job actual hast
 
 1. Mantén tu job Pipeline actual activo como respaldo.
 2. Instala/verifica plugins: `GitHub Branch Source`, `Pipeline`, `Credentials Binding`.
-3. Crea credencial GitHub App o PAT con permisos de lectura de repos y webhooks de la org.
+3. Crea credencial para GitHub Organization Folder (separada de `github-token`):
+    - Opción A (recomendada): `GitHub App` credential.
+    - Opción B: `Username with password` (username GitHub, password = PAT).
+    - Permisos mínimos: lectura de repos + metadata + administración de webhooks.
 4. En Jenkins: `New Item` -> `GitHub Organization`.
 5. En `GitHub Organization`, configura:
     - Owner: tu organización.
