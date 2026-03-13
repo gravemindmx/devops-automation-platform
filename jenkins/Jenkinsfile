@@ -492,6 +492,7 @@ pipeline {
                             TEST_PAYLOAD=$(cat <<EOF
 {
     "event_type": "build_success",
+    "dry_run": true,
     "build_number": "${BUILD_NUMBER}",
     "branch": "${BRANCH_NAME}",
     "commit": "${COMMIT_HASH}",

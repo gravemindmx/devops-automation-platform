@@ -49,3 +49,16 @@ def test_unknown_event_uses_generic_formatter():
 
     assert response["statusCode"] == 200
     mocked_send.assert_called_once()
+
+
+def test_dry_run_skips_notification_and_returns_200():
+    event = {
+        "event_type": "build_success",
+        "dry_run": True,
+    }
+
+    with patch.object(teams_lambda, "send_teams_notification") as mocked_send:
+        response = teams_lambda.lambda_handler(event, None)
+
+    assert response["statusCode"] == 200
+    mocked_send.assert_not_called()
