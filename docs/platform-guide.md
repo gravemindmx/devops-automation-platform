@@ -351,6 +351,14 @@ Si usarás Terraform desde Jenkins, ejecutar el job con:
 
 - `APPLY_TERRAFORM=true`
 
+Para validar primero en un solo repositorio (piloto recomendado):
+
+- `LOCK_SINGLE_REPO=true`
+- `LOCK_GITHUB_ORG=<tu-org>`
+- `LOCK_GITHUB_REPO=<tu-repo-piloto>`
+
+Con este modo, el pipeline falla si el SCM del job apunta a otro repositorio.
+
 ### 3.7.1 Migrar a Organization Folder sin romper flujo actual (Solo Jenkins)
 
 Objetivo: activar descubrimiento por organización sin apagar tu job actual hasta validar.
@@ -371,9 +379,19 @@ Objetivo: activar descubrimiento por organización sin apagar tu job actual hast
 
 Notas de compatibilidad del Jenkinsfile:
 
+- Nuevo modo piloto por parámetros:
+    - `LOCK_SINGLE_REPO=true` fuerza ejecución en un único repo.
+    - `LOCK_GITHUB_ORG` y `LOCK_GITHUB_REPO` definen el repo permitido.
+    - Si el checkout corresponde a otro repo, el build falla para evitar despliegues cruzados.
 - El pipeline detecta `org/repo` desde `remote.origin.url` (modo Organization Folder).
 - Si no puede detectarlo, usa fallback `GITHUB_ORG`/`GITHUB_REPO` (modo clásico).
 - Esto permite convivencia temporal de ambos modos durante la migración.
+
+Recomendación operativa:
+
+1. Ejecuta piloto con lock activo (`LOCK_SINGLE_REPO=true`).
+2. Valida varios merges a `develop` en ese repo.
+3. Cambia a `LOCK_SINGLE_REPO=false` recién al entrar a Organization Folder multirepo.
 
 ### 3.8 Configurar webhooks externos (Solo Jenkins)
 
