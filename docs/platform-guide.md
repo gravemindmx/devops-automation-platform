@@ -137,31 +137,150 @@ devops-automation-platform/
 
 ---
 
-## 3) Setup Inicial
+## 3) Setup Inicial (Paso a Paso)
 
-### Prerrequisitos
+Esta sección está pensada para que cualquier persona pueda levantar el proyecto desde cero.
+
+### 3.1 Prerrequisitos
 
 - Terraform >= 1.0
-- AWS CLI v2 configurado con credenciales
-- Python 3.11+ con pip
+- AWS CLI v2 configurado (`aws configure`)
+- Python 3.11+
 - Git
-- Cuenta Jenkins con los plugins: **GitHub**, **Pipeline**, **Credentials Binding**
+- Jenkins con plugins: **GitHub**, **Pipeline**, **Credentials Binding**
 
-### Paso 1 — Infraestructura AWS
+Validación rápida local:
+
+```bash
+terraform -version
+aws --version
+python --version
+git --version
+```
+
+### 3.2 Elige una sola ruta de ejecución (Local o Jenkins)
+
+Para evitar confusión, usa solo una ruta por ejecución:
+
+| Escenario | Ruta recomendada | Dónde van los secretos |
+|---|---|---|
+| Primera instalación / pruebas en tu equipo | **Local (PowerShell/Bash)** | Variables de entorno `TF_VAR_*` en tu terminal |
+| Despliegue recurrente de equipo / CI/CD | **Jenkins Pipeline** | Jenkins Credentials (inyectadas como `TF_VAR_*` en el pipeline) |
+
+Regla operativa:
+
+- Si ejecutas Terraform en tu laptop: configura `TF_VAR_*` localmente y ejecuta `terraform` tú.
+- Si ejecuta Terraform Jenkins: configura credenciales en Jenkins y dispara el job.
+- No necesitas hacer ambos al mismo tiempo para el mismo deploy.
+
+Nota importante: las secciones siguientes indican explícitamente si aplican a **Solo Local**, **Solo Jenkins** o **Ambas rutas**.
+
+Checklist rápido por ruta:
+
+Ruta Local:
+
+1. Completar `terraform.tfvars` solo con valores no sensibles.
+2. Exportar `TF_VAR_github_token`, `TF_VAR_jira_api_token`, `TF_VAR_teams_webhook_url`, `TF_VAR_teams_qa_webhook_url`.
+3. Ejecutar `terraform init/plan/apply` desde `infrastructure/terraform`.
+
+Ruta Jenkins:
+
+1. Completar `terraform.tfvars` (no sensible) en el repositorio.
+2. Cargar secrets en Jenkins Credentials (`github-token`, `jira-api-token`, `teams-webhook`, `teams-qa-webhook`, `jira-url`).
+3. Ejecutar pipeline con `APPLY_TERRAFORM=true`.
+
+### 3.3 Variables: qué se configura y dónde
+
+No todos los valores se configuran en el mismo lugar.
+
+| Variable | Requerida | Dónde configurarla | Ejemplo |
+|---|---|---|---|
+| `aws_region` | Sí | `terraform.tfvars` | `us-east-1` |
+| `vpc_id` | Sí | `terraform.tfvars` | `vpc-xxxxxxxx` |
+| `jenkins_instance_id` | Sí | `terraform.tfvars` | `i-xxxxxxxx` |
+| `private_subnet_id` | Sí | `terraform.tfvars` | `subnet-xxxxxxxx` |
+| `github_org` | Sí | `terraform.tfvars` | `mi-org` |
+| `github_repo` | Sí | `terraform.tfvars` | `devops-automation-platform` |
+| `jira_url` | Sí | `terraform.tfvars` o Jenkins cred `jira-url` | `https://mi-org.atlassian.net` |
+| `jira_project_key` | Sí | `terraform.tfvars` | `DEVOPS` |
+| `jira_assignee_user` | Opcional | `terraform.tfvars` | `qa-team` |
+| `qa_environment_url` | Opcional | `terraform.tfvars` | `https://qa-api.example.com` |
+| `github_token` | Sí | `TF_VAR_github_token` o Jenkins cred `github-token` | token |
+| `jira_api_token` | Sí | `TF_VAR_jira_api_token` o Jenkins cred `jira-api-token` | token |
+| `teams_webhook_url` | Sí | `TF_VAR_teams_webhook_url` o Jenkins cred `teams-webhook` | URL webhook |
+| `teams_qa_webhook_url` | Sí | `TF_VAR_teams_qa_webhook_url` o Jenkins cred `teams-qa-webhook` | URL webhook |
+
+Regla: secretos en variables de entorno/Jenkins, no en archivos versionados.
+
+### 3.3.1 De dónde sacar cada variable
+
+AWS:
+
+- `aws_region`: región donde están tus recursos AWS.
+- `vpc_id`: en consola AWS VPC -> Your VPCs.
+- `private_subnet_id`: en consola AWS VPC -> Subnets (la subnet privada donde vive Jenkins).
+- `jenkins_instance_id`: en consola EC2 -> Instances (ID de la instancia Jenkins).
+
+GitHub:
+
+- `github_org`: nombre de tu organización o usuario dueño del repo.
+- `github_repo`: nombre del repositorio.
+- `github_token` (secreto): GitHub -> Settings -> Developer settings -> Personal access tokens (scope mínimo: `repo`).
+
+Jira:
+
+- `jira_url`: URL base de tu instancia, por ejemplo `https://tu-org.atlassian.net`.
+- `jira_project_key`: Jira -> Project settings -> Details (Project key).
+- `jira_assignee_user`: usuario/equipo por defecto para tickets automáticos.
+- `jira_api_token` (secreto): Atlassian account -> Security -> API tokens.
+
+Teams:
+
+- `teams_webhook_url` (secreto): en el canal principal, crear Incoming Webhook y copiar URL.
+- `teams_qa_webhook_url` (secreto): en canal QA, crear Incoming Webhook y copiar URL.
+
+### 3.3.2 Dónde configurar cada cosa (resumen operativo)
+
+En `terraform.tfvars` (no sensible):
+
+- `aws_region`
+- `vpc_id`
+- `jenkins_instance_id`
+- `private_subnet_id`
+- `github_org`
+- `github_repo`
+- `jira_url`
+- `jira_project_key`
+- `jira_assignee_user`
+- `qa_environment_url`
+
+En variables de entorno local (`TF_VAR_*`):
+
+- `TF_VAR_github_token`
+- `TF_VAR_jira_api_token`
+- `TF_VAR_teams_webhook_url`
+- `TF_VAR_teams_qa_webhook_url`
+
+En Jenkins Credentials:
+
+- `github-token`
+- `jira-url`
+- `jira-api-token`
+- `teams-webhook`
+- `teams-qa-webhook`
+
+### 3.4 Crear y completar `terraform.tfvars` (Ambas rutas)
 
 ```bash
 cd infrastructure/terraform
 cp terraform.tfvars.example terraform.tfvars
-# Editar terraform.tfvars con los valores reales
-terraform init
-terraform plan -out=tfplan
-terraform apply tfplan
-terraform output   # Guardar webhook_url y jira_webhook_url
 ```
 
-### Recomendado — Secretos por entorno (sin `.tfvars`)
+Editar `terraform.tfvars` con valores no sensibles (IDs y configuración funcional).
 
-Mantén secretos fuera de archivos versionados y cárgalos como variables de entorno `TF_VAR_*`.
+### 3.5 Exportar secretos por entorno (Solo Local)
+
+Aplica solo si tú ejecutas Terraform desde tu terminal.
 
 PowerShell (Windows):
 
@@ -170,9 +289,6 @@ $env:TF_VAR_github_token = "<github_pat>"
 $env:TF_VAR_jira_api_token = "<jira_api_token>"
 $env:TF_VAR_teams_webhook_url = "<teams_webhook_general>"
 $env:TF_VAR_teams_qa_webhook_url = "<teams_webhook_qa>"
-
-terraform -chdir=infrastructure/terraform plan -out=tfplan
-terraform -chdir=infrastructure/terraform apply tfplan
 ```
 
 Bash (Linux/macOS):
@@ -182,53 +298,77 @@ export TF_VAR_github_token="<github_pat>"
 export TF_VAR_jira_api_token="<jira_api_token>"
 export TF_VAR_teams_webhook_url="<teams_webhook_general>"
 export TF_VAR_teams_qa_webhook_url="<teams_webhook_qa>"
-
-terraform -chdir=infrastructure/terraform plan -out=tfplan
-terraform -chdir=infrastructure/terraform apply tfplan
 ```
 
-En Jenkins, usa credenciales y expórtalas como `TF_VAR_*` durante el stage de Terraform.
+### 3.6 Desplegar infraestructura con Terraform (Solo Local)
+
+Aplica solo para despliegue manual desde tu equipo.
+
+```bash
+terraform -chdir=infrastructure/terraform init
+terraform -chdir=infrastructure/terraform plan -out=tfplan
+terraform -chdir=infrastructure/terraform apply tfplan
+terraform -chdir=infrastructure/terraform output
+```
 
 Outputs clave:
 
 | Output | Uso |
 |---|---|
-| `webhook_url` | URL para el webhook de Jenkins (API Gateway `POST /notify`) |
-| `jira_webhook_url` | URL a configurar en Jira webhooks (`POST /jira`) |
-| `jenkins_public_url` | URL pública de Jenkins vía ALB |
+| `webhook_url` | Endpoint API Gateway para integración de notificaciones |
+| `jira_webhook_url` | Endpoint API Gateway para webhook de Jira (`POST /jira`) |
+| `jenkins_public_url` | URL pública de Jenkins por ALB |
 
-### Paso 2 — Credenciales en Jenkins
+### 3.7 Configurar Jenkins (Solo Jenkins)
 
-Configurar en **Manage Jenkins → Credentials**:
+Aplica solo si Jenkins ejecutará el pipeline y/o Terraform.
 
-| ID | Tipo | Descripción |
+En **Manage Jenkins → Credentials**, crear:
+
+| ID | Tipo | Valor |
 |---|---|---|
-| `github-token` | Secret text | GitHub Personal Access Token (scope: `repo`) |
-| `jira-url` | Secret text | URL base de Jira (ej. `https://tu-org.atlassian.net`) |
-| `jira-api-token` | Secret text | API Token de Jira |
-| `teams-webhook` | Secret text | Webhook URL de Teams (canal principal) |
-| `teams-qa-webhook` | Secret text | Webhook URL de Teams (canal QA) |
+| `github-token` | Secret text | GitHub PAT con scope `repo` |
+| `jira-url` | Secret text | URL base Jira |
+| `jira-api-token` | Secret text | API token Jira |
+| `teams-webhook` | Secret text | Webhook Teams canal principal |
+| `teams-qa-webhook` | Secret text | Webhook Teams canal QA |
 
-### Paso 3 — Webhook de GitHub
-
-En el repositorio GitHub → **Settings → Webhooks → Add webhook**:
-
-- **Payload URL:** URL de Jenkins + `/github-webhook/`
-- **Content type:** `application/json`
-- **Events:** `Push`, `Pull requests`
-
-### Paso 4 — Webhook de Jira
-
-En Jira → **Configuración → System → WebHooks → Create**:
-
-- **URL:** valor de `jira_webhook_url` del `terraform output`
-- **Events:** Issue updated (status change)
-
-### Paso 5 — Crear pipeline en Jenkins
+Luego crear el job Pipeline:
 
 1. **New Item → Pipeline**
-2. En **Build Triggers:** activar `GitHub hook trigger for GITScm polling`
-3. En **Pipeline:** seleccionar `Pipeline script from SCM` → apuntar al repo, rama `develop`, archivo `jenkins/Jenkinsfile`
+2. Activar trigger: `GitHub hook trigger for GITScm polling`
+3. **Pipeline script from SCM**
+4. Repositorio: este repo
+5. Rama: `develop`
+6. Script path: `jenkins/Jenkinsfile`
+
+Si usarás Terraform desde Jenkins, ejecutar el job con:
+
+- `APPLY_TERRAFORM=true`
+
+### 3.8 Configurar webhooks externos (Solo Jenkins)
+
+Aplica cuando Jenkins sea el orquestador CI/CD del proyecto.
+
+GitHub (repo settings):
+
+- Payload URL: `https://<jenkins-public-url>/github-webhook/`
+- Content type: `application/json`
+- Events: `Push` y `Pull requests`
+
+Jira (System → WebHooks):
+
+- URL: valor de `jira_webhook_url` (terraform output)
+- Events: `Issue updated` (incluyendo cambio de status)
+
+### 3.9 Ejecutar una prueba end-to-end (Según ruta elegida)
+
+- Ruta Local: valida `terraform plan/apply` y revisa outputs.
+- Ruta Jenkins: ejecuta pipeline y valida notificaciones/tickets.
+
+1. Ejecuta el pipeline manualmente en Jenkins (sin parámetros) para validar Build/Test/Deploy QA.
+2. Fuerza una falla en una rama de prueba para confirmar creación de ticket Jira y notificación FAIL a Teams.
+3. Cambia el ticket a `Resolved`/`Done` para validar webhook Jira y notificación de resolución en Teams.
 
 ---
 
@@ -316,7 +456,7 @@ python -m pytest services/jira-event-handler/tests/ -v
 | Síntoma | Causa probable | Solución |
 |---|---|---|
 | Pipeline no se dispara con el merge | Webhook de GitHub mal configurado | Revisar `Settings → Webhooks` en GitHub; verificar entregas recientes |
-| Lambda falla con env var missing | Variables de entorno no configuradas en Terraform | Revisar `terraform.tfvars` y re-aplicar |
+| Lambda falla con env var missing | Secretos `TF_VAR_*` no cargados o credenciales Jenkins incompletas | Exportar `TF_VAR_*` localmente o revisar credentials en Jenkins y volver a aplicar |
 | Jira webhook no llega a la Lambda | URL `jira_webhook_url` incorrecta | Ejecutar `terraform output jira_webhook_url` y actualizar en Jira |
 | Ticket Jira no se crea en falla | Token Jira expirado o credencial mal configurada | Rotar el API Token y actualizar la credencial `jira-api-token` en Jenkins |
 | Teams no recibe notificación | Webhook de Teams expirado | Regenerar el webhook en el canal Teams y actualizar credencial |
