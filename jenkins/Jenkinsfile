@@ -81,10 +81,10 @@ pipeline {
         // AWS
         AWS_DEFAULT_REGION = 'us-east-1'
         AWS_REGION = 'us-east-1'
-        LAMBDA_FUNCTION = 'teams-notifier'
-        QA_LAMBDA_FUNCTION = 'teams-notifier-qa'
-        JIRA_HANDLER_FUNCTION = 'jira-event-handler'
-        QA_JIRA_HANDLER_FUNCTION = 'jira-event-handler-qa'
+        LAMBDA_FUNCTION = 'devops-platform-teams-notifier'
+        QA_LAMBDA_FUNCTION = 'devops-platform-teams-notifier'
+        JIRA_HANDLER_FUNCTION = 'devops-platform-jira-event-handler'
+        QA_JIRA_HANDLER_FUNCTION = 'devops-platform-jira-event-handler'
 
         // Jira
         JIRA_URL = credentials('jira-url')
@@ -118,9 +118,19 @@ pipeline {
             steps {
                 script {
                     def remoteUrl = sh(script: 'git config --get remote.origin.url || true', returnStdout: true).trim()
-                    def githubMatcher = remoteUrl =~ /github\.com[\/:]([^\/]+)\/([^\/]+?)(?:\.git)?\/?$/
-                    def detectedOrg = githubMatcher ? githubMatcher[0][1] : ''
-                    def detectedRepo = githubMatcher ? githubMatcher[0][2] : ''
+                    def detectedOrg = ''
+                    def detectedRepo = ''
+                    if (remoteUrl) {
+                        def normalizedRemote = remoteUrl.replaceAll('/+$', '').replaceAll(/\.git$/, '')
+                        def githubPath = normalizedRemote.replaceFirst(/^.*github\.com[\/:]/, '')
+                        if (githubPath.contains('/')) {
+                            def remoteParts = githubPath.split('/')
+                            if (remoteParts.length >= 2) {
+                                detectedOrg = remoteParts[0]
+                                detectedRepo = remoteParts[1]
+                            }
+                        }
+                    }
                     def lockOrg = params.LOCK_GITHUB_ORG?.trim() ?: env.GITHUB_ORG?.trim()
                     def lockRepo = params.LOCK_GITHUB_REPO?.trim() ?: env.GITHUB_REPO?.trim()
 
@@ -135,7 +145,7 @@ pipeline {
 
                         env.RESOLVED_GITHUB_ORG = lockOrg
                         env.RESOLVED_GITHUB_REPO = lockRepo
-                    } else if (githubMatcher) {
+                    } else if (detectedOrg && detectedRepo) {
                         env.RESOLVED_GITHUB_ORG = detectedOrg
                         env.RESOLVED_GITHUB_REPO = detectedRepo
                     } else if (env.GITHUB_ORG?.trim() && env.GITHUB_REPO?.trim()) {
