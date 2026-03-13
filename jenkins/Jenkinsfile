@@ -118,11 +118,11 @@ pipeline {
             steps {
                 script {
                     def remoteUrl = sh(script: 'git config --get remote.origin.url || true', returnStdout: true).trim()
-                    def githubMatcher = remoteUrl =~ /github\.com[\/:]([^\/]+)\/([^\/]+?)(?:\.git)?$/
+                    def githubMatcher = remoteUrl =~ /github\.com[\/:]([^\/]+)\/([^\/]+?)(?:\.git)?\/?$/
                     def detectedOrg = githubMatcher ? githubMatcher[0][1] : ''
                     def detectedRepo = githubMatcher ? githubMatcher[0][2] : ''
-                    def lockOrg = params.LOCK_GITHUB_ORG?.trim()
-                    def lockRepo = params.LOCK_GITHUB_REPO?.trim()
+                    def lockOrg = params.LOCK_GITHUB_ORG?.trim() ?: env.GITHUB_ORG?.trim()
+                    def lockRepo = params.LOCK_GITHUB_REPO?.trim() ?: env.GITHUB_REPO?.trim()
 
                     if (params.LOCK_SINGLE_REPO == true) {
                         if (!lockOrg || !lockRepo) {
@@ -233,11 +233,11 @@ pipeline {
 
                         sh '''
                             echo "Installing deps for teams-notifier..."
-                            pip install -r services/teams-notifier/config/requirements.txt \
+                            python3 -m pip install -r services/teams-notifier/config/requirements.txt \
                                 -t services/teams-notifier/package/ --quiet
 
                             echo "Installing deps for jira-event-handler..."
-                            pip install -r services/jira-event-handler/config/requirements.txt \
+                            python3 -m pip install -r services/jira-event-handler/config/requirements.txt \
                                 -t services/jira-event-handler/package/ --quiet
 
                             echo "Creating deployment packages..."
@@ -266,10 +266,10 @@ pipeline {
 
                         sh '''
                             echo "Running tests for teams-notifier..."
-                            python -m pytest services/teams-notifier/tests/ -v --tb=short
+                            python3 -m pytest services/teams-notifier/tests/ -v --tb=short
 
                             echo "Running tests for jira-event-handler..."
-                            python -m pytest services/jira-event-handler/tests/ -v --tb=short
+                            python3 -m pytest services/jira-event-handler/tests/ -v --tb=short
 
                             echo "Tests completed ✓"
                         '''
