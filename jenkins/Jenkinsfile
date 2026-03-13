@@ -77,6 +77,7 @@ pipeline {
         RESOLVED_GITHUB_ORG = ''
         RESOLVED_GITHUB_REPO = ''
         NODE_ENV = 'qa'
+        PYTHON_BIN = 'python3.11'
 
         // AWS
         AWS_DEFAULT_REGION = 'us-east-1'
@@ -163,12 +164,6 @@ pipeline {
                     if (!env.RESOLVED_GITHUB_REPO?.trim()) {
                         env.RESOLVED_GITHUB_REPO = env.GITHUB_REPO
                     }
-                    if (!env.RESOLVED_GITHUB_ORG?.trim()) {
-                        env.RESOLVED_GITHUB_ORG = 'gravemindmx'
-                    }
-                    if (!env.RESOLVED_GITHUB_REPO?.trim()) {
-                        env.RESOLVED_GITHUB_REPO = 'devops-automation-platform'
-                    }
 
                     echo "Single-repo lock mode: ${params.LOCK_SINGLE_REPO}"
                     echo "Resolved GitHub org: ${env.RESOLVED_GITHUB_ORG ?: 'N/A'}"
@@ -247,6 +242,21 @@ pipeline {
             }
         }
 
+        stage('🐍 Verify Python 3.11') {
+            steps {
+                sh '''
+                    set -e
+                    command -v "${PYTHON_BIN}" >/dev/null 2>&1 || {
+                        echo "ERROR: ${PYTHON_BIN} is not installed on Jenkins agent"
+                        exit 1
+                    }
+
+                    "${PYTHON_BIN}" --version
+                    "${PYTHON_BIN}" -m pip --version || "${PYTHON_BIN}" -m ensurepip --upgrade
+                '''
+            }
+        }
+
         stage('📦 Build') {
             steps {
                 script {
@@ -256,12 +266,14 @@ pipeline {
                         echo "═══════════════════════════════════════"
 
                         sh '''
+                            rm -rf services/teams-notifier/package services/jira-event-handler/package
+
                             echo "Installing deps for teams-notifier..."
-                            python3 -m pip install -r services/teams-notifier/config/requirements.txt \
+                            "${PYTHON_BIN}" -m pip install -r services/teams-notifier/config/requirements.txt \
                                 -t services/teams-notifier/package/ --quiet
 
                             echo "Installing deps for jira-event-handler..."
-                            python3 -m pip install -r services/jira-event-handler/config/requirements.txt \
+                            "${PYTHON_BIN}" -m pip install -r services/jira-event-handler/config/requirements.txt \
                                 -t services/jira-event-handler/package/ --quiet
 
                             echo "Creating deployment packages..."
@@ -290,13 +302,13 @@ pipeline {
 
                         sh '''
                             # pytest is needed in Jenkins runtime for executing tests.
-                            python3 -m pip install --quiet pytest pytest-cov
+                            "${PYTHON_BIN}" -m pip install --quiet pytest pytest-cov
 
                             echo "Running tests for teams-notifier..."
-                            python3 -m pytest services/teams-notifier/tests/ -v --tb=short
+                            "${PYTHON_BIN}" -m pytest services/teams-notifier/tests/ -v --tb=short
 
                             echo "Running tests for jira-event-handler..."
-                            python3 -m pytest services/jira-event-handler/tests/ -v --tb=short
+                            "${PYTHON_BIN}" -m pytest services/jira-event-handler/tests/ -v --tb=short
 
                             echo "Tests completed ✓"
                         '''
