@@ -569,8 +569,12 @@ EOF
                             --payload "$PAYLOAD" \
                             /tmp/notification-response.json
 
-                        echo "Success notification sent to Teams ✓"
-                        cat /tmp/notification-response.json
+                        if grep -q '"statusCode"[[:space:]]*:[[:space:]]*200' /tmp/notification-response.json; then
+                            echo "Success notification sent to Teams ✓"
+                        else
+                            echo "⚠ Teams notification lambda executed but message delivery failed"
+                            cat /tmp/notification-response.json
+                        fi
                     '''
                 }
             }
@@ -652,7 +656,12 @@ PAYLOAD
                         --payload "$FAILURE_PAYLOAD" \
                         /tmp/failure-notification.json || true
 
-                    echo "Failure notification sent to Teams ✓"
+                    if grep -q '"statusCode"[[:space:]]*:[[:space:]]*200' /tmp/failure-notification.json; then
+                        echo "Failure notification sent to Teams ✓"
+                    else
+                        echo "⚠ Teams failure notification was not delivered"
+                        cat /tmp/failure-notification.json
+                    fi
                 '''
             }
         }
