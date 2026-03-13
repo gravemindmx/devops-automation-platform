@@ -164,6 +164,12 @@ pipeline {
                     if (!env.RESOLVED_GITHUB_REPO?.trim()) {
                         env.RESOLVED_GITHUB_REPO = env.GITHUB_REPO
                     }
+                    if (!env.RESOLVED_GITHUB_ORG?.trim()) {
+                        env.RESOLVED_GITHUB_ORG = 'gravemindmx'
+                    }
+                    if (!env.RESOLVED_GITHUB_REPO?.trim()) {
+                        env.RESOLVED_GITHUB_REPO = 'devops-automation-platform'
+                    }
 
                     echo "Single-repo lock mode: ${params.LOCK_SINGLE_REPO}"
                     echo "Resolved GitHub org: ${env.RESOLVED_GITHUB_ORG ?: 'N/A'}"
@@ -302,8 +308,11 @@ pipeline {
                         echo "═══════════════════════════════════════"
 
                         sh '''
-                            # pytest is needed in Jenkins runtime for executing tests.
-                            "${PYTHON_BIN}" -m pip install --quiet pytest pytest-cov
+                            # Install runtime deps for tests in Jenkins interpreter (not only package/ folder).
+                            "${PYTHON_BIN}" -m pip install --quiet \
+                                -r services/teams-notifier/config/requirements.txt \
+                                -r services/jira-event-handler/config/requirements.txt \
+                                pytest pytest-cov
 
                             echo "Running tests for teams-notifier..."
                             "${PYTHON_BIN}" -m pytest services/teams-notifier/tests/ -v --tb=short
