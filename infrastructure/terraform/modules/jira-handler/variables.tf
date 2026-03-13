@@ -55,7 +55,7 @@ variable "memory_size" {
 variable "lambda_zip_path" {
   description = "Path to Lambda function zip file"
   type        = string
-  default     = "../../../services/jira-event-handler/jira-handler.zip"
+  default     = "../../../../services/jira-event-handler/jira-handler.zip"
 }
 
 variable "environment_variables" {

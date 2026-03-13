@@ -3,6 +3,7 @@
 # =========================================
 
 resource "aws_route_table" "public_routes" {
+  count  = local.use_existing_public_subnets ? 0 : 1
   vpc_id = var.vpc_id
 
   tags = merge(
@@ -16,9 +17,10 @@ resource "aws_route_table" "public_routes" {
 }
 
 resource "aws_route" "public_internet_route" {
-  route_table_id         = aws_route_table.public_routes.id
+  count                  = local.use_existing_public_subnets ? 0 : 1
+  route_table_id         = aws_route_table.public_routes[0].id
   destination_cidr_block = "0.0.0.0/0"
-  gateway_id             = aws_internet_gateway.jenkins_public_gateway.id
+  gateway_id             = local.internet_gateway_id
 }
 
 # =========================================
@@ -26,11 +28,22 @@ resource "aws_route" "public_internet_route" {
 # =========================================
 
 resource "aws_route_table_association" "public_subnet_az1_association" {
-  subnet_id      = aws_subnet.public_subnet_az1.id
-  route_table_id = aws_route_table.public_routes.id
+  count          = local.use_existing_public_subnets ? 0 : 1
+  subnet_id      = local.public_subnet_az1_id
+  route_table_id = aws_route_table.public_routes[0].id
 }
 
 resource "aws_route_table_association" "public_subnet_az2_association" {
-  subnet_id      = aws_subnet.public_subnet_az2.id
-  route_table_id = aws_route_table.public_routes.id
+  count          = local.use_existing_public_subnets ? 0 : 1
+  subnet_id      = local.public_subnet_az2_id
+  route_table_id = aws_route_table.public_routes[0].id
+}
+
+data "aws_route_table" "existing_public_route" {
+  count     = local.use_existing_public_subnets ? 1 : 0
+  subnet_id = local.public_subnet_az1_id
+}
+
+locals {
+  public_route_table_id = local.use_existing_public_subnets ? data.aws_route_table.existing_public_route[0].id : aws_route_table.public_routes[0].id
 }

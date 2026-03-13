@@ -83,7 +83,7 @@ resource "aws_iam_role_policy" "jenkins_instance_policy" {
         Description = "CloudWatch Logs for Jenkins"
       },
       {
-        Sid    = "SSMParameter Store"
+        Sid    = "SSMParameterStore"
         Effect = "Allow"
         Action = [
           "ssm:GetParameter",

@@ -7,7 +7,7 @@ variable "teams_webhook_url" {
 variable "lambda_zip_path" {
   description = "Path to Lambda function zip file"
   type        = string
-  default     = "../../../services/teams-notifier/lambda.zip"
+  default     = "../../../../services/teams-notifier/teams-notifier.zip"
 }
 
 variable "project_name" {

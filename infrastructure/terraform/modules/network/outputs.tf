@@ -1,40 +1,40 @@
 output "internet_gateway_id" {
   description = "Internet Gateway ID for public internet access"
-  value       = aws_internet_gateway.jenkins_public_gateway.id
+  value       = local.internet_gateway_id
 }
 
 output "public_subnet_az1_id" {
   description = "Public subnet ID in AZ1"
-  value       = aws_subnet.public_subnet_az1.id
+  value       = local.public_subnet_az1_id
 }
 
 output "public_subnet_az2_id" {
   description = "Public subnet ID in AZ2"
-  value       = aws_subnet.public_subnet_az2.id
+  value       = local.public_subnet_az2_id
 }
 
 output "public_subnet_ids" {
   description = "List of public subnet IDs"
-  value       = [aws_subnet.public_subnet_az1.id, aws_subnet.public_subnet_az2.id]
+  value       = [local.public_subnet_az1_id, local.public_subnet_az2_id]
 }
 
 output "public_route_table_id" {
   description = "Public route table ID"
-  value       = aws_route_table.public_routes.id
+  value       = local.public_route_table_id
 }
 
 output "public_subnets_info" {
   description = "Information about public subnets"
   value = {
     az1 = {
-      subnet_id         = aws_subnet.public_subnet_az1.id
-      cidr_block        = aws_subnet.public_subnet_az1.cidr_block
-      availability_zone = aws_subnet.public_subnet_az1.availability_zone
+      subnet_id         = local.public_subnet_az1_id
+      cidr_block        = local.public_subnet_az1_cidr
+      availability_zone = local.public_subnet_az1_az
     }
     az2 = {
-      subnet_id         = aws_subnet.public_subnet_az2.id
-      cidr_block        = aws_subnet.public_subnet_az2.cidr_block
-      availability_zone = aws_subnet.public_subnet_az2.availability_zone
+      subnet_id         = local.public_subnet_az2_id
+      cidr_block        = local.public_subnet_az2_cidr
+      availability_zone = local.public_subnet_az2_az
     }
   }
 }

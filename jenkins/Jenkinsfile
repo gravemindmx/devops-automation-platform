@@ -122,14 +122,10 @@ pipeline {
                     def detectedOrg = ''
                     def detectedRepo = ''
                     if (remoteUrl) {
-                        def normalizedRemote = remoteUrl.replaceAll('/+$', '').replaceAll(/\.git$/, '')
-                        def githubPath = normalizedRemote.replaceFirst(/^.*github\.com[\/:]/, '')
-                        if (githubPath.contains('/')) {
-                            def remoteParts = githubPath.split('/')
-                            if (remoteParts.length >= 2) {
-                                detectedOrg = remoteParts[0]
-                                detectedRepo = remoteParts[1]
-                            }
+                        def matcher = (remoteUrl =~ /github\.com[\/:]([^\/]+)\/([^\/.]+)(?:\.git)?$/)
+                        if (matcher.find()) {
+                            detectedOrg = matcher.group(1)
+                            detectedRepo = matcher.group(2)
                         }
                     }
                     def lockOrg = params.LOCK_GITHUB_ORG?.trim() ?: env.GITHUB_ORG?.trim()
@@ -230,6 +226,22 @@ pipeline {
                     ]) {
                         sh '''
                             set +x
+
+                            echo "Preparing Lambda ZIP artifacts for Terraform..."
+                            rm -rf services/teams-notifier/package services/jira-event-handler/package
+                            rm -f services/teams-notifier/teams-notifier.zip services/jira-event-handler/jira-handler.zip
+
+                            "${PYTHON_BIN}" -m pip install -r services/teams-notifier/config/requirements.txt \
+                                -t services/teams-notifier/package/ --quiet
+                            "${PYTHON_BIN}" -m pip install -r services/jira-event-handler/config/requirements.txt \
+                                -t services/jira-event-handler/package/ --quiet
+
+                            cp -r services/teams-notifier/src/. services/teams-notifier/package/
+                            (cd services/teams-notifier && zip -r teams-notifier.zip package/ -x "*.pyc" "*/__pycache__/*" > /dev/null 2>&1)
+
+                            cp -r services/jira-event-handler/src/. services/jira-event-handler/package/
+                            (cd services/jira-event-handler && zip -r jira-handler.zip package/ -x "*.pyc" "*/__pycache__/*" > /dev/null 2>&1)
+
                             cd infrastructure/terraform
 
                             if [ ! -f terraform.tfvars ]; then
