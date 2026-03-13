@@ -232,13 +232,18 @@ pipeline {
                             set +x
                             cd infrastructure/terraform
 
+                            if [ ! -f terraform.tfvars ]; then
+                                echo "ERROR: terraform.tfvars not found in workspace at infrastructure/terraform/terraform.tfvars"
+                                exit 1
+                            fi
+
                             terraform init
-                            terraform plan -out=tfplan
+                            terraform plan -input=false -var-file=terraform.tfvars -out=tfplan
 
                             if [ "${TERRAFORM_AUTO_APPROVE}" = "true" ]; then
-                                terraform apply -auto-approve tfplan
+                                terraform apply -input=false -auto-approve tfplan
                             else
-                                terraform apply tfplan
+                                terraform apply -input=false tfplan
                             fi
 
                             echo "Terraform apply completed ✓"
