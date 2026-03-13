@@ -241,10 +241,16 @@ pipeline {
                                 -t services/jira-event-handler/package/ --quiet
 
                             cp -r services/teams-notifier/src/. services/teams-notifier/package/
-                            (cd services/teams-notifier && zip -r teams-notifier.zip package/ -x "*.pyc" "*/__pycache__/*" > /dev/null 2>&1)
+                            (
+                                cd services/teams-notifier/package && \
+                                zip -r ../teams-notifier.zip . -x "*.pyc" "*/__pycache__/*" > /dev/null 2>&1
+                            )
 
                             cp -r services/jira-event-handler/src/. services/jira-event-handler/package/
-                            (cd services/jira-event-handler && zip -r jira-handler.zip package/ -x "*.pyc" "*/__pycache__/*" > /dev/null 2>&1)
+                            (
+                                cd services/jira-event-handler/package && \
+                                zip -r ../jira-handler.zip . -x "*.pyc" "*/__pycache__/*" > /dev/null 2>&1
+                            )
 
                             cd infrastructure/terraform
 
@@ -306,10 +312,16 @@ pipeline {
 
                             echo "Creating deployment packages..."
                             cp -r services/teams-notifier/src/. services/teams-notifier/package/
-                            cd services/teams-notifier && zip -r teams-notifier.zip package/ -x "*.pyc" "*/__pycache__/*" > /dev/null 2>&1 && cd ../..
+                            (
+                                cd services/teams-notifier/package && \
+                                zip -r ../teams-notifier.zip . -x "*.pyc" "*/__pycache__/*" > /dev/null 2>&1
+                            )
 
                             cp -r services/jira-event-handler/src/. services/jira-event-handler/package/
-                            cd services/jira-event-handler && zip -r jira-handler.zip package/ -x "*.pyc" "*/__pycache__/*" > /dev/null 2>&1 && cd ../..
+                            (
+                                cd services/jira-event-handler/package && \
+                                zip -r ../jira-handler.zip . -x "*.pyc" "*/__pycache__/*" > /dev/null 2>&1
+                            )
 
                             echo "Build successful ✓"
                         '''
@@ -477,18 +489,38 @@ pipeline {
                             echo "Running health checks..."
 
                             # Test Lambda function
+                            TEST_PAYLOAD=$(cat <<EOF
+{
+    "event_type": "build_success",
+    "build_number": "${BUILD_NUMBER}",
+    "branch": "${BRANCH_NAME}",
+    "commit": "${COMMIT_HASH}",
+    "build_url": "${BUILD_URL}",
+    "environment": "qa"
+}
+EOF
+)
+
                             aws lambda invoke \
                                 --function-name "${QA_LAMBDA_FUNCTION}" \
                                 --region "${AWS_REGION}" \
                                 --cli-binary-format raw-in-base64-out \
-                                --payload '{"test": true}' \
-                                /tmp/lambda-test-response.json
+                                --payload "$TEST_PAYLOAD" \
+                                /tmp/lambda-test-response.json > /tmp/lambda-test-metadata.json
+
+                            if grep -q "FunctionError" /tmp/lambda-test-metadata.json; then
+                                echo "Lambda invocation returned FunctionError ✗"
+                                cat /tmp/lambda-test-metadata.json
+                                cat /tmp/lambda-test-response.json
+                                exit 1
+                            fi
 
                             # Check response
-                            if grep -q "statusCode" /tmp/lambda-test-response.json; then
+                            if grep -q '"statusCode"[[:space:]]*:[[:space:]]*200' /tmp/lambda-test-response.json; then
                                 echo "Lambda health check passed ✓"
                             else
                                 echo "Lambda health check failed ✗"
+                                cat /tmp/lambda-test-response.json
                                 exit 1
                             fi
 
