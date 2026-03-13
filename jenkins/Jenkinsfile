@@ -57,8 +57,10 @@ pipeline {
     environment {
         // GitHub
         GITHUB_TOKEN = credentials('github-token')
-        GITHUB_ORG = 'your-org'
-        GITHUB_REPO = 'your-repo'
+        GITHUB_ORG = ''
+        GITHUB_REPO = ''
+        RESOLVED_GITHUB_ORG = ''
+        RESOLVED_GITHUB_REPO = ''
         NODE_ENV = 'qa'
 
         // AWS
@@ -97,22 +99,48 @@ pipeline {
             }
         }
 
+        stage('🧭 Resolve GitHub Repository Context') {
+            steps {
+                script {
+                    def remoteUrl = sh(script: 'git config --get remote.origin.url || true', returnStdout: true).trim()
+                    def githubMatcher = remoteUrl =~ /github\.com[\/:]([^\/]+)\/([^\/]+?)(?:\.git)?$/
+
+                    if (githubMatcher) {
+                        env.RESOLVED_GITHUB_ORG = githubMatcher[0][1]
+                        env.RESOLVED_GITHUB_REPO = githubMatcher[0][2]
+                    } else {
+                        // Backward compatibility for classic pipeline jobs with manual variables
+                        env.RESOLVED_GITHUB_ORG = env.GITHUB_ORG
+                        env.RESOLVED_GITHUB_REPO = env.GITHUB_REPO
+                    }
+
+                    echo "Resolved GitHub org: ${env.RESOLVED_GITHUB_ORG ?: 'N/A'}"
+                    echo "Resolved GitHub repo: ${env.RESOLVED_GITHUB_REPO ?: 'N/A'}"
+                }
+            }
+        }
+
         stage('🌿 Create GitHub Branch') {
             when {
                 expression { params.CREATE_BRANCH == true && params.BRANCH_TO_CREATE?.trim() }
             }
             steps {
                 script {
+                    if (!env.RESOLVED_GITHUB_ORG?.trim() || !env.RESOLVED_GITHUB_REPO?.trim()) {
+                        error('Unable to resolve GitHub organization/repository from checkout. Ensure SCM points to GitHub or set GITHUB_ORG/GITHUB_REPO.')
+                    }
+
                     echo "═══════════════════════════════════════"
                     echo "Stage: Create GitHub Branch"
                     echo "Branch: ${params.BRANCH_TO_CREATE}"
+                    echo "Repository: ${env.RESOLVED_GITHUB_ORG}/${env.RESOLVED_GITHUB_REPO}"
                     echo "═══════════════════════════════════════"
 
                     withCredentials([string(credentialsId: 'github-token', variable: 'GH_TOKEN')]) {
                         sh """
-                            git config user.email "jenkins@${GITHUB_ORG}.com"
+                            git config user.email "jenkins@${env.RESOLVED_GITHUB_ORG}.com"
                             git config user.name "Jenkins CI"
-                            git remote set-url origin https://\${GH_TOKEN}@github.com/${GITHUB_ORG}/${GITHUB_REPO}.git
+                            git remote set-url origin https://\${GH_TOKEN}@github.com/${env.RESOLVED_GITHUB_ORG}/${env.RESOLVED_GITHUB_REPO}.git
                             git fetch origin develop
                             git checkout develop
                             git pull origin develop
@@ -438,6 +466,7 @@ PAYLOAD
                 echo "Build: #${BUILD_NUMBER}"
                 echo "Branch: ${BRANCH_NAME}"
                 echo "Commit: ${COMMIT_HASH}"
+                echo "Repo: ${env.RESOLVED_GITHUB_ORG ?: 'N/A'}/${env.RESOLVED_GITHUB_REPO ?: 'N/A'}"
                 echo "Status: ${currentBuild.result ?: 'IN PROGRESS'}"
                 echo "═════════════════════════════════════════"
             }

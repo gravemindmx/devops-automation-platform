@@ -323,6 +323,11 @@ Outputs clave:
 
 Aplica solo si Jenkins ejecutará el pipeline y/o Terraform.
 
+La configuración soporta dos modos sin romper compatibilidad:
+
+- Job Pipeline clásico (1 repo específico).
+- GitHub Organization Folder (múltiples repos, descubrimiento automático).
+
 En **Manage Jenkins → Credentials**, crear:
 
 | ID | Tipo | Valor |
@@ -346,15 +351,45 @@ Si usarás Terraform desde Jenkins, ejecutar el job con:
 
 - `APPLY_TERRAFORM=true`
 
+### 3.7.1 Migrar a Organization Folder sin romper flujo actual (Solo Jenkins)
+
+Objetivo: activar descubrimiento por organización sin apagar tu job actual hasta validar.
+
+1. Mantén tu job Pipeline actual activo como respaldo.
+2. Instala/verifica plugins: `GitHub Branch Source`, `Pipeline`, `Credentials Binding`.
+3. Crea credencial GitHub App o PAT con permisos de lectura de repos y webhooks de la org.
+4. En Jenkins: `New Item` -> `GitHub Organization`.
+5. En `GitHub Organization`, configura:
+    - Owner: tu organización.
+    - Credentials: credencial GitHub creada.
+    - Repository Discovery: `All repositories` o por tópico/patrón.
+    - Branch/PR discovery según tu flujo.
+    - Script Path: `jenkins/Jenkinsfile`.
+6. Ejecuta un `Scan Organization Now` y confirma que se crean jobs por repo/branch.
+7. Prueba un repo piloto (merge a `develop`) y valida Build/Test/Deploy/Notificaciones.
+8. Cuando el piloto esté estable, migra el resto de repos y recién entonces depreca el job clásico.
+
+Notas de compatibilidad del Jenkinsfile:
+
+- El pipeline detecta `org/repo` desde `remote.origin.url` (modo Organization Folder).
+- Si no puede detectarlo, usa fallback `GITHUB_ORG`/`GITHUB_REPO` (modo clásico).
+- Esto permite convivencia temporal de ambos modos durante la migración.
+
 ### 3.8 Configurar webhooks externos (Solo Jenkins)
 
 Aplica cuando Jenkins sea el orquestador CI/CD del proyecto.
 
-GitHub (repo settings):
+GitHub (si usas Job Pipeline clásico por repo):
 
 - Payload URL: `https://<jenkins-public-url>/github-webhook/`
 - Content type: `application/json`
 - Events: `Push` y `Pull requests`
+
+GitHub (si usas Organization Folder):
+
+- Recomendado: integración con GitHub App en Jenkins para manejo automático de webhooks por repositorio descubierto.
+- Alternativa: webhook a nivel organización apuntando a `https://<jenkins-public-url>/github-webhook/`.
+- Después de configurar credenciales/app, ejecutar `Scan Organization Now`.
 
 Jira (System → WebHooks):
 
