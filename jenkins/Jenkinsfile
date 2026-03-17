@@ -108,7 +108,7 @@ pipeline {
         // Jira
         JIRA_URL = credentials('jira-url')
         JIRA_API_TOKEN = credentials('jira-api-token')
-        JIRA_PROJECT_KEY = 'DEVOPS'
+        JIRA_PROJECT_KEY = 'SCRUM'
         INFRA_READY = 'true'
 
         // Teams
