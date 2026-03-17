@@ -526,9 +526,26 @@ pipeline {
                                 --zip-file fileb://services/jira-event-handler/jira-handler.zip \
                                 --region "${AWS_REGION}"
 
+                            # Sync webhook/Jira environment variables from Jenkins credentials.
+                            echo "Updating teams-notifier environment variables..."
+                            aws lambda update-function-configuration \
+                                --function-name "${QA_LAMBDA_FUNCTION}" \
+                                --environment "Variables={TEAMS_WEBHOOK=${TEAMS_WEBHOOK}}" \
+                                --region "${AWS_REGION}"
+
+                            echo "Updating jira-event-handler environment variables..."
+                            aws lambda update-function-configuration \
+                                --function-name "${QA_JIRA_HANDLER_FUNCTION}" \
+                                --environment "Variables={TEAMS_WEBHOOK=${TEAMS_QA_WEBHOOK},JIRA_URL=${JIRA_URL}}" \
+                                --region "${AWS_REGION}"
+
                             echo "Waiting for Lambdas to be ready..."
                             aws lambda wait function-updated \
                                 --function-name "${QA_LAMBDA_FUNCTION}" \
+                                --region "${AWS_REGION}"
+
+                            aws lambda wait function-updated \
+                                --function-name "${QA_JIRA_HANDLER_FUNCTION}" \
                                 --region "${AWS_REGION}"
 
                             echo "Deployment to QA completed ✓"
