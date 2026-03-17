@@ -707,7 +707,7 @@ EOF
         "project": {"key": "${JIRA_PROJECT_KEY}"},
         "summary": "[BUILD #${BUILD_NUMBER} FAILED] ${BRANCH_NAME} - ${COMMIT_HASH}",
         "description": "$ERROR_MESSAGE",
-        "issuetype": {"name": "Bug"},
+        "issuetype": {"name": "Story"},
         "priority": {"name": "High"},
         "labels": ["jenkins", "failed-build", "${BRANCH_NAME}"]
     }
