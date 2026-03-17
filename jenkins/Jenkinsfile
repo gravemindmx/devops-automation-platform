@@ -394,7 +394,7 @@ pipeline {
                             set -e
 
                             rm -rf app-repo
-                            APP_REPO_AUTH_URL=$(echo "${APP_REPO_URL}" | sed 's#https://#https://${GH_TOKEN}@#')
+                            APP_REPO_AUTH_URL=$(echo "${APP_REPO_URL}" | sed "s#https://#https://${GH_TOKEN}@#")
 
                             git clone --branch "${APP_REPO_BRANCH}" --single-branch "${APP_REPO_AUTH_URL}" app-repo
 
