@@ -58,6 +58,21 @@ pipeline {
             defaultValue: '',
             description: 'Optional Jira user email. If provided, Jira ticket creation uses Basic auth (email + token).'
         )
+        booleanParam(
+            name: 'RUN_APP_REPO_TESTS',
+            defaultValue: false,
+            description: 'Run tests from secondary application repository in this central pipeline'
+        )
+        string(
+            name: 'APP_REPO_URL',
+            defaultValue: 'https://github.com/iMony-Tech/devops-automation-platform-test.git',
+            description: 'Secondary application repository URL to test (repo 2)'
+        )
+        string(
+            name: 'APP_REPO_BRANCH',
+            defaultValue: 'main',
+            description: 'Branch to checkout from secondary application repository'
+        )
     }
 
     triggers {
@@ -357,6 +372,48 @@ pipeline {
                         '''
                     } catch (Exception e) {
                         error("Tests failed: ${e.message}")
+                    }
+                }
+            }
+        }
+
+        stage('🧪 Test App Repository (Repo 2)') {
+            when {
+                expression { params.RUN_APP_REPO_TESTS == true }
+            }
+            steps {
+                script {
+                    echo "═══════════════════════════════════════"
+                    echo "Stage: Test App Repository (Repo 2)"
+                    echo "Repo: ${params.APP_REPO_URL}"
+                    echo "Branch: ${params.APP_REPO_BRANCH}"
+                    echo "═══════════════════════════════════════"
+
+                    withCredentials([string(credentialsId: 'github-token', variable: 'GH_TOKEN')]) {
+                        sh '''
+                            set -e
+
+                            rm -rf app-repo
+                            APP_REPO_AUTH_URL=$(echo "${APP_REPO_URL}" | sed 's#https://#https://${GH_TOKEN}@#')
+
+                            git clone --branch "${APP_REPO_BRANCH}" --single-branch "${APP_REPO_AUTH_URL}" app-repo
+
+                            cd app-repo
+                            if [ -f "requirements.txt" ]; then
+                                "${PYTHON_BIN}" -m pip install --quiet -r requirements.txt
+                            fi
+
+                            if [ -d "tests" ]; then
+                                "${PYTHON_BIN}" -m pytest tests/ -v --tb=short
+                            elif ls test_*.py >/dev/null 2>&1; then
+                                "${PYTHON_BIN}" -m unittest -v
+                            else
+                                echo "No tests found in app repository (expected tests/ or test_*.py)"
+                                exit 1
+                            fi
+
+                            echo "App repository tests completed ✓"
+                        '''
                     }
                 }
             }
