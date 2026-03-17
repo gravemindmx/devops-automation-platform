@@ -70,8 +70,10 @@ def lambda_handler(event, context):
         else:
             teams_message = format_generic_message(payload)
         
-        # Send to Teams
-        success = send_teams_notification(teams_message)
+        # Send the raw event payload to Power Automate so that
+        # triggerBody() fields (build_number, status, etc.) are accessible
+        # in the AdaptiveCard expressions on the Power Automate side.
+        success = send_teams_notification(payload)
         
         if success:
             return {
@@ -423,6 +425,26 @@ def format_generic_message(payload: Dict[str, Any]) -> Dict:
 def to_plain_text_message(payload: Dict[str, Any]) -> Dict[str, str]:
     """Build plain text payload for workflow-style Teams webhooks."""
 
+    # Handle flat event payload (sent from Jenkins via Lambda)
+    if "event_type" in payload or "build_number" in payload:
+        build_number = payload.get("build_number", "N/A")
+        status = payload.get("status", payload.get("event_type", "Notification"))
+        branch = payload.get("branch", "")
+        commit = payload.get("commit", "")
+        environment = payload.get("environment", "")
+        message = payload.get("message", "")
+        lines = [f"Build #{build_number} - {status}"]
+        if branch:
+            lines.append(f"- Branch: {branch}")
+        if commit:
+            lines.append(f"- Commit: {commit}")
+        if environment:
+            lines.append(f"- Environment: {environment}")
+        if message:
+            lines.append(f"- Message: {message}")
+        return {"text": "\n".join(lines)}
+
+    # Legacy: Handle MessageCard format
     title = payload.get("title") or payload.get("summary") or "DevOps Notification"
 
     details = []

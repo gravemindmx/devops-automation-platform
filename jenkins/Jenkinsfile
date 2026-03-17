@@ -645,6 +645,7 @@ EOF
 {
     "event_type": "build_success",
     "build_number": "${BUILD_NUMBER}",
+    "repository": "${APP_REPO_URL:-${GIT_URL}}",
     "branch": "${BRANCH_NAME}",
     "commit": "${COMMIT_HASH}",
     "status": "SUCCESS",
@@ -731,10 +732,12 @@ EOF
 {
     "event_type": "build_failure",
     "build_number": "${BUILD_NUMBER}",
+    "repository": "${APP_REPO_URL:-${GIT_URL}}",
     "branch": "${BRANCH_NAME}",
     "commit": "${COMMIT_HASH}",
     "status": "FAILED",
     "message": "Build failed - see Jira ticket",
+    "environment": "qa",
     "error": "$ERROR_MESSAGE",
     "jira_ticket": "$ISSUE_KEY",
     "jira_url": "$JIRA_BROWSE_URL",
