@@ -15,6 +15,7 @@ import os
 import urllib3
 import logging
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 from typing import Dict, Any
 
 # Initialize clients
@@ -419,6 +420,36 @@ def format_generic_message(payload: Dict[str, Any]) -> Dict:
     return message
 
 
+def to_plain_text_message(payload: Dict[str, Any]) -> Dict[str, str]:
+    """Build plain text payload for workflow-style Teams webhooks."""
+
+    title = payload.get("title") or payload.get("summary") or "DevOps Notification"
+
+    details = []
+    sections = payload.get("sections") or []
+    if sections and isinstance(sections[0], dict):
+        first = sections[0]
+        if first.get("activityTitle"):
+            details.append(str(first.get("activityTitle")))
+        if first.get("activitySubtitle"):
+            details.append(str(first.get("activitySubtitle")))
+
+        for fact in first.get("facts", []):
+            if isinstance(fact, dict):
+                name = fact.get("name")
+                value = fact.get("value")
+                if name and value is not None:
+                    details.append(f"- {name}: {value}")
+
+    body = "\n".join(details).strip()
+    if body:
+        text = f"{title}\n{body}"
+    else:
+        text = str(title)
+
+    return {"text": text}
+
+
 def send_teams_notification(payload: Dict) -> bool:
     """Send notification to Microsoft Teams"""
     
@@ -426,7 +457,13 @@ def send_teams_notification(payload: Dict) -> bool:
         if not TEAMS_WEBHOOK:
             logger.error("TEAMS_WEBHOOK not configured")
             return False
-        
+
+        parsed = urlparse(TEAMS_WEBHOOK)
+        logger.info(
+            "Sending Teams notification to host=%s path=%s",
+            parsed.netloc,
+            parsed.path[:48] + ("..." if len(parsed.path) > 48 else "")
+        )
         logger.info(f"Sending Teams notification: {json.dumps(payload)}")
         
         response = http.request(
@@ -443,6 +480,35 @@ def send_teams_notification(payload: Dict) -> bool:
         else:
             logger.error(f"Teams notification failed (status: {response.status})")
             logger.error(f"Response: {response.data.decode('utf-8')}")
+
+            # Workflow webhooks may reject MessageCard payloads. Retry with plain text payload.
+            if response.status in [400, 405, 415, 422]:
+                fallback_payload = to_plain_text_message(payload)
+                logger.info("Retrying Teams notification using plain text payload format")
+                fallback_response = http.request(
+                    'POST',
+                    TEAMS_WEBHOOK,
+                    body=json.dumps(fallback_payload),
+                    headers={'Content-Type': 'application/json'},
+                    timeout=urllib3.Timeout(connect=5.0, read=10.0)
+                )
+
+                if fallback_response.status in [200, 201, 202]:
+                    logger.info(
+                        "Teams notification sent on fallback (status: %s)",
+                        fallback_response.status
+                    )
+                    return True
+
+                logger.error(
+                    "Teams fallback failed (status: %s)",
+                    fallback_response.status
+                )
+                logger.error(
+                    "Fallback response: %s",
+                    fallback_response.data.decode('utf-8')
+                )
+
             return False
     
     except Exception as e:
