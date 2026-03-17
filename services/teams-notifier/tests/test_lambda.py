@@ -1,6 +1,7 @@
 import importlib.util
 from pathlib import Path
 from unittest.mock import patch
+from types import SimpleNamespace
 
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "src" / "lambda.py"
@@ -62,3 +63,19 @@ def test_dry_run_skips_notification_and_returns_200():
 
     assert response["statusCode"] == 200
     mocked_send.assert_not_called()
+
+
+def test_send_teams_notification_accepts_202_status():
+    with patch.object(
+        teams_lambda.http,
+        "request",
+        return_value=SimpleNamespace(status=202, data=b""),
+    ):
+        with patch.object(
+            teams_lambda,
+            "TEAMS_WEBHOOK",
+            "https://example.powerplatform.com/flow",
+        ):
+            result = teams_lambda.send_teams_notification({"text": "ok"})
+
+    assert result is True

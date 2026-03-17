@@ -474,7 +474,7 @@ def send_teams_notification(payload: Dict) -> bool:
             timeout=urllib3.Timeout(connect=5.0, read=10.0)
         )
         
-        if response.status in [200, 201]:
+        if response.status in [200, 201, 202]:
             logger.info(f"Teams notification sent (status: {response.status})")
             return True
         else:
