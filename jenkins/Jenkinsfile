@@ -270,9 +270,18 @@ pipeline {
                             cd infrastructure/terraform
 
                             if [ ! -f terraform.tfvars ]; then
-                                echo "ERROR: terraform.tfvars not found in workspace at infrastructure/terraform/terraform.tfvars"
-                                exit 1
+                                if [ -f terraform.tfvars.example ]; then
+                                    cp terraform.tfvars.example terraform.tfvars
+                                    echo "terraform.tfvars not found; created from terraform.tfvars.example"
+                                else
+                                    echo "ERROR: terraform.tfvars not found and terraform.tfvars.example is missing"
+                                    exit 1
+                                fi
                             fi
+
+                            # Keep SCM-resolved GitHub context consistent in Terraform runs.
+                            export TF_VAR_github_org="${RESOLVED_GITHUB_ORG:-$GITHUB_ORG}"
+                            export TF_VAR_github_repo="${RESOLVED_GITHUB_REPO:-$GITHUB_REPO}"
 
                             terraform init
                             terraform plan -input=false -var-file=terraform.tfvars -out=tfplan
