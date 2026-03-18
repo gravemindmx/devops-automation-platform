@@ -405,14 +405,18 @@ pipeline {
 
                             rm -rf app-repo
                             rm -f .app_repo_commit
+                            rm -f .app_repo_author
                             APP_REPO_AUTH_URL=$(echo "${APP_REPO_URL}" | sed "s#https://#https://${GH_TOKEN}@#")
 
                             git clone --branch "${APP_REPO_BRANCH}" --single-branch "${APP_REPO_AUTH_URL}" app-repo
 
                             cd app-repo
                             APP_REPO_COMMIT=$(git rev-parse --short=8 HEAD)
+                            APP_REPO_AUTHOR=$(git log -1 --pretty=format:"%an" 2>/dev/null || echo "Unknown")
                             echo "$APP_REPO_COMMIT" > ../.app_repo_commit
+                            echo "$APP_REPO_AUTHOR" > ../.app_repo_author
                             echo "App repository commit under test: $APP_REPO_COMMIT"
+                            echo "App repository author under test: $APP_REPO_AUTHOR"
 
                             if [ -f "requirements.txt" ]; then
                                 "${PYTHON_BIN}" -m pip install --quiet -r requirements.txt
@@ -647,7 +651,21 @@ EOF
 
                     sh '''
                         set +e
+                        SUCCESS_COMMIT="${COMMIT_HASH}"
+                        if [ -f ".app_repo_commit" ]; then
+                            APP_TEST_COMMIT=$(cat .app_repo_commit | tr -d '\n')
+                            if [ -n "$APP_TEST_COMMIT" ]; then
+                                SUCCESS_COMMIT="$APP_TEST_COMMIT"
+                            fi
+                        fi
+
                         COMMIT_AUTHOR=$(git log -1 --pretty=format:"%an" 2>/dev/null || echo "Unknown")
+                        if [ -f ".app_repo_author" ]; then
+                            APP_TEST_AUTHOR=$(cat .app_repo_author | tr -d '\n')
+                            if [ -n "$APP_TEST_AUTHOR" ]; then
+                                COMMIT_AUTHOR="$APP_TEST_AUTHOR"
+                            fi
+                        fi
                         COMMIT_AUTHOR_SAFE=$(echo "${COMMIT_AUTHOR}" | tr -d '"\\\\<>')
 
                         RESOLVED_TICKET_KEYS=""
@@ -682,7 +700,7 @@ except:
                                 curl -s -X POST "${JIRA_URL}/rest/api/3/issue/${TICKET_KEY}/comment" \
                                     -H "$JIRA_AUTH_HEADER" \
                                     -H "Content-Type: application/json" \
-                                    -d "{\"body\":{\"type\":\"doc\",\"version\":1,\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Resuelto automaticamente por Jenkins build #${BUILD_NUMBER} | Commit: ${COMMIT_HASH} | Autor: ${COMMIT_AUTHOR_SAFE} | URL: ${BUILD_URL}\"}]}]}}" \
+                                    -d "{\"body\":{\"type\":\"doc\",\"version\":1,\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Resuelto automaticamente por Jenkins build #${BUILD_NUMBER} | Commit: ${SUCCESS_COMMIT} | Autor: ${COMMIT_AUTHOR_SAFE} | URL: ${BUILD_URL}\"}]}]}}" \
                                     > /dev/null
 
                                 # Find transition ID for statusCategory=done
@@ -729,7 +747,7 @@ except:
     "build_number": "${BUILD_NUMBER}",
     "repository": "${APP_REPO_URL:-${GIT_URL}}",
     "branch": "${BRANCH_NAME}",
-    "commit": "${COMMIT_HASH}",
+    "commit": "${SUCCESS_COMMIT}",
     "resolved_by": "${COMMIT_AUTHOR_SAFE}",
     "resolved_tickets": "${TICKETS_TRIMMED}",
     "status": "EXITOSO",
