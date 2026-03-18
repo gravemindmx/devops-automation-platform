@@ -108,6 +108,7 @@ pipeline {
         // Jira
         JIRA_URL = credentials('jira-url')
         JIRA_API_TOKEN = credentials('jira-api-token')
+        JIRA_DEFAULT_USER_EMAIL = 'infraestructura@imony.mx'
         JIRA_PROJECT_KEY = 'NFRTST'
         INFRA_READY = 'true'
 
@@ -690,12 +691,14 @@ EOF
                     echo "Error: $ERROR_MESSAGE"
 
                     # Step 1: Create Jira ticket
-                    if [ -z "${JIRA_USER_EMAIL}" ]; then
+                    EFFECTIVE_JIRA_EMAIL="${JIRA_USER_EMAIL:-${JIRA_DEFAULT_USER_EMAIL}}"
+
+                    if [ -z "$EFFECTIVE_JIRA_EMAIL" ]; then
                         echo "⚠ JIRA_USER_EMAIL is empty. Jira Cloud API token requires Basic auth (email + token)."
                         ISSUE_KEY="N/A"
                         JIRA_BROWSE_URL=""
                     else
-                        JIRA_AUTH_TOKEN=$(printf "%s:%s" "${JIRA_USER_EMAIL}" "${JIRA_API_TOKEN}" | base64 | tr -d '\\n')
+                        JIRA_AUTH_TOKEN=$(printf "%s:%s" "$EFFECTIVE_JIRA_EMAIL" "${JIRA_API_TOKEN}" | base64 | tr -d '\\n')
                         JIRA_AUTH_HEADER="Authorization: Basic ${JIRA_AUTH_TOKEN}"
 
                         ISSUE_RESPONSE=$(curl -s -X POST \
