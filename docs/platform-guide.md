@@ -36,19 +36,7 @@ Guía única para entender, configurar, desplegar y operar la plataforma.
 └─────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
-│  2. INICIO DE TRABAJO (opcional, vía pipeline parametrizado)    │
-│                                                                 │
-│  Jenkins Pipeline  (CREATE_BRANCH=true, BRANCH_TO_CREATE=...)   │
-│       ↓                                                         │
-│  Jenkins crea rama en GitHub (git push origin feature/...)      │
-│       ↓                                                         │
-│  Developer trabaja en la rama                                   │
-│       ↓                                                         │
-│  Pull Request → Merge a develop                                 │
-└─────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────┐
-│  3. CI/CD AUTOMÁTICO (disparado por merge a develop)            │
+│  2. CI/CD AUTOMÁTICO (disparado por merge a develop)            │
 │                                                                 │
 │  GitHub Webhook  →  Jenkins (githubPush trigger)                │
 │       ↓                                                         │
@@ -82,7 +70,7 @@ Guía única para entender, configurar, desplegar y operar la plataforma.
 └─────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
-│  4. RESOLUCIÓN DE INCIDENTE (disparado por Jira)                │
+│  3. RESOLUCIÓN DE INCIDENTE (disparado por Jira)                │
 │                                                                 │
 │  Equipo corrige el error en su rama                             │
 │       ↓                                                         │
@@ -644,17 +632,6 @@ Política obligatoria de promoción a QA:
 - Si detecta push directo sin PR (o commit sin PR asociado), el pipeline falla antes de Build/Deploy.
 - Si la rama objetivo no es `develop`, el pipeline bloquea la promoción a QA.
 - En flujo con repo app (`RUN_APP_REPO_TESTS=true`), la validación se hace sobre el commit HEAD del repo app en la rama objetivo.
-
-### Crear rama de feature desde Jenkins (opcional)
-
-Ejecutar el pipeline manualmente con parámetros:
-
-| Parámetro | Valor |
-|---|---|
-| `CREATE_BRANCH` | `true` |
-| `BRANCH_TO_CREATE` | `feature/PROJ-123-mi-feature` |
-
-Jenkins creará y pusheará la rama en GitHub usando el token `github-token`.
 
 ### Eventos que Teams puede recibir
 

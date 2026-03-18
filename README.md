@@ -15,8 +15,6 @@ terraform apply
        ↓
 AWS Lambda + API Gateway + IAM + Jenkins ALB
        ↓
-Jenkins crea rama en GitHub  (pipeline parametrizado)
-       ↓
 Developer trabaja → Pull Request → Merge a develop
        ↓
 GitHub Webhook → Jenkins Pipeline  (automático)
