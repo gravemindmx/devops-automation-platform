@@ -194,6 +194,91 @@ pipeline {
             }
         }
 
+        stage('🛡️ Enforce PR Merge Policy') {
+            when {
+                expression { params.CREATE_BRANCH != true }
+            }
+            steps {
+                script {
+                    withCredentials([string(credentialsId: 'github-token', variable: 'GH_TOKEN')]) {
+                        sh '''
+                            set -e
+
+                            VERIFY_ORG="${RESOLVED_GITHUB_ORG}"
+                            VERIFY_REPO="${RESOLVED_GITHUB_REPO}"
+                            VERIFY_COMMIT="${GIT_COMMIT}"
+                            TARGET_BRANCH="${BRANCH_NAME#origin/}"
+
+                            # If this run validates repo 2, enforce policy against app repo head commit.
+                            if [ "${RUN_APP_REPO_TESTS}" = "true" ]; then
+                                rm -rf app-repo-policy-check
+                                APP_REPO_AUTH_URL=$(echo "${APP_REPO_URL}" | sed "s#https://#https://${GH_TOKEN}@#")
+                                git clone --depth 1 --branch "${APP_REPO_BRANCH}" --single-branch "${APP_REPO_AUTH_URL}" app-repo-policy-check
+
+                                cd app-repo-policy-check
+                                VERIFY_COMMIT=$(git rev-parse HEAD)
+                                cd ..
+
+                                TARGET_BRANCH="${APP_REPO_BRANCH#origin/}"
+                                VERIFY_ORG=$(echo "${APP_REPO_URL}" | sed -E 's#https://github.com/([^/]+)/([^/.]+)(\\.git)?#\\1#')
+                                VERIFY_REPO=$(echo "${APP_REPO_URL}" | sed -E 's#https://github.com/([^/]+)/([^/.]+)(\\.git)?#\\2#')
+                            fi
+
+                            echo "PR policy validation target: ${VERIFY_ORG}/${VERIFY_REPO}"
+                            echo "Target branch: ${TARGET_BRANCH}"
+                            echo "Commit: ${VERIFY_COMMIT}"
+
+                            if [ "${TARGET_BRANCH}" != "develop" ] && [ "${TARGET_BRANCH}" != "main" ]; then
+                                echo "Branch ${TARGET_BRANCH} is outside protected branches (develop/main). Skipping PR policy enforcement."
+                                rm -rf app-repo-policy-check || true
+                                exit 0
+                            fi
+
+                            if [ -z "${VERIFY_ORG}" ] || [ -z "${VERIFY_REPO}" ] || [ -z "${VERIFY_COMMIT}" ]; then
+                                echo "ERROR: Unable to resolve repository/commit for PR policy validation."
+                                rm -rf app-repo-policy-check || true
+                                exit 1
+                            fi
+
+                            PULLS_RESPONSE=$(curl -s \
+                                -H "Authorization: Bearer ${GH_TOKEN}" \
+                                -H "Accept: application/vnd.github+json" \
+                                "https://api.github.com/repos/${VERIFY_ORG}/${VERIFY_REPO}/commits/${VERIFY_COMMIT}/pulls")
+
+                            HAS_VALID_MERGED_PR=$(echo "$PULLS_RESPONSE" | TARGET_BRANCH="${TARGET_BRANCH}" "${PYTHON_BIN}" -c "
+import json, os, sys
+target = os.getenv('TARGET_BRANCH', '').strip()
+try:
+    data = json.load(sys.stdin)
+    if isinstance(data, dict) and data.get('message'):
+        print('no')
+        sys.exit(0)
+    for pr in data if isinstance(data, list) else []:
+        base_ref = ((pr.get('base') or {}).get('ref') or '').strip()
+        merged_at = pr.get('merged_at')
+        if base_ref == target and merged_at:
+            print('yes')
+            sys.exit(0)
+    print('no')
+except Exception:
+    print('no')
+")
+
+                            if [ "${HAS_VALID_MERGED_PR}" != "yes" ]; then
+                                echo "❌ Policy violation: Commit ${VERIFY_COMMIT} is not associated with a merged PR into ${TARGET_BRANCH}."
+                                echo "Only merged PR changes to develop/main are allowed for QA deployment."
+                                rm -rf app-repo-policy-check || true
+                                exit 1
+                            fi
+
+                            echo "✓ PR merge policy validated for commit ${VERIFY_COMMIT} on ${TARGET_BRANCH}."
+                            rm -rf app-repo-policy-check || true
+                        '''
+                    }
+                }
+            }
+        }
+
         stage('🌿 Create GitHub Branch') {
             when {
                 expression { params.CREATE_BRANCH == true && params.BRANCH_TO_CREATE?.trim() }

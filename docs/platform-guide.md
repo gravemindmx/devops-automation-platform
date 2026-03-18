@@ -638,6 +638,12 @@ Recomendación de operación:
 
 Cada merge a `develop` dispara el pipeline completo automáticamente vía webhook de GitHub.
 
+Política obligatoria de promoción a QA:
+
+- El pipeline valida que el commit evaluado esté asociado a un PR mergeado hacia `develop` o `main`.
+- Si detecta push directo sin PR (o commit sin PR asociado), el pipeline falla antes de Build/Deploy.
+- En flujo con repo app (`RUN_APP_REPO_TESTS=true`), la validación se hace sobre el commit HEAD del repo app en la rama objetivo.
+
 ### Crear rama de feature desde Jenkins (opcional)
 
 Ejecutar el pipeline manualmente con parámetros:
