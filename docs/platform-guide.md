@@ -828,6 +828,12 @@ Nombres objetivo:
 3. Ejecutar un trigger real desde SCM para validar encadenamiento.
 4. Confirmar que el job 2 sigue obteniendo `jenkins/Jenkinsfile` desde `develop`.
 
+Nota sobre políticas de ramas en GitHub:
+
+- Si tu organización restringe la creación de `main`/`develop` a admins, el credencial `github-token` de Jenkins debe tener permisos de admin o bypass de reglas.
+- El stage `Create GitHub Branch` detecta automáticamente la base disponible (`develop`, `main`, `master` o default remoto) y crea la rama objetivo desde esa base.
+- Si el token no tiene permisos para crear ramas según la política, el job fallará por autorización (comportamiento esperado).
+
 ### 9.3 Criterio de aceptación del renombrado
 
 1. Un push al repo app dispara `01-app-repo-trigger`.

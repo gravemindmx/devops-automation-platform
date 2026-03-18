@@ -212,15 +212,41 @@ pipeline {
 
                     withCredentials([string(credentialsId: 'github-token', variable: 'GH_TOKEN')]) {
                         sh """
+                            set -e
                             git config user.email "jenkins@${env.RESOLVED_GITHUB_ORG}.com"
                             git config user.name "Jenkins CI"
                             git remote set-url origin https://\${GH_TOKEN}@github.com/${env.RESOLVED_GITHUB_ORG}/${env.RESOLVED_GITHUB_REPO}.git
-                            git fetch origin develop
-                            git checkout develop
-                            git pull origin develop
-                            git checkout -b ${params.BRANCH_TO_CREATE}
-                            git push origin ${params.BRANCH_TO_CREATE}
-                            echo "Branch ${params.BRANCH_TO_CREATE} created and pushed ✓"
+                            git fetch origin --prune
+
+                            BASE_BRANCH=""
+                            if git ls-remote --exit-code --heads origin develop >/dev/null 2>&1; then
+                                BASE_BRANCH="develop"
+                            elif git ls-remote --exit-code --heads origin main >/dev/null 2>&1; then
+                                BASE_BRANCH="main"
+                            elif git ls-remote --exit-code --heads origin master >/dev/null 2>&1; then
+                                BASE_BRANCH="master"
+                            else
+                                BASE_BRANCH=\$(git ls-remote --symref origin HEAD 2>/dev/null | awk '/^ref:/ {print \$2}' | sed 's#refs/heads/##')
+                            fi
+
+                            if [ -z "\$BASE_BRANCH" ]; then
+                                echo "ERROR: No base branch found on remote (develop/main/master/default HEAD)."
+                                exit 1
+                            fi
+
+                            TARGET_BRANCH="${params.BRANCH_TO_CREATE}"
+                            echo "Using base branch: \$BASE_BRANCH"
+                            echo "Target branch: \$TARGET_BRANCH"
+
+                            if git ls-remote --exit-code --heads origin "\$TARGET_BRANCH" >/dev/null 2>&1; then
+                                echo "Branch \$TARGET_BRANCH already exists on remote ✓"
+                                exit 0
+                            fi
+
+                            git checkout -B "\$BASE_BRANCH" "origin/\$BASE_BRANCH"
+                            git checkout -b "\$TARGET_BRANCH"
+                            git push -u origin "\$TARGET_BRANCH"
+                            echo "Branch \$TARGET_BRANCH created and pushed ✓"
                         """
                     }
                 }
