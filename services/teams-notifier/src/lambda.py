@@ -163,6 +163,8 @@ def format_build_failure(payload: Dict[str, Any]) -> Dict:
     commit = payload.get('commit', 'N/A')
     error = payload.get('error', 'Unknown error')
     jira_ticket = payload.get('jira_ticket', '')
+    jira_ticket_summary = payload.get('jira_ticket_summary', '')
+    jira_action = payload.get('jira_action', '')
     build_url = payload.get('build_url', '')
     jira_url = payload.get('jira_url', '')
     
@@ -193,6 +195,16 @@ def format_build_failure(payload: Dict[str, Any]) -> Dict:
         facts.append({
             "name": "Jira Ticket",
             "value": jira_ticket
+        })
+    if jira_ticket_summary:
+        facts.append({
+            "name": "Ticket Summary",
+            "value": jira_ticket_summary
+        })
+    if jira_action:
+        facts.append({
+            "name": "Ticket Action",
+            "value": jira_action
         })
     
     message = {
@@ -231,7 +243,7 @@ def format_build_failure(payload: Dict[str, Any]) -> Dict:
             "targets": [
                 {
                     "os": "default",
-                    "uri": f"{jira_url}/browse/{jira_ticket}"
+                    "uri": jira_url
                 }
             ]
         })

@@ -97,9 +97,12 @@ def handle_issue_updated(payload: Dict[str, Any]) -> Dict[str, Any]:
                         status_change = {
                             'from': old_status,
                             'to': new_status,
-                            'changed_at': history.get('created', '')
+                            'changed_at': history.get('created', ''),
+                            'changed_by': history.get('author', {}).get('displayName', 'Unknown')
                         }
                         break
+            if status_change:
+                break
         
         if status_change:
             return handle_issue_resolved(payload, status_change)
@@ -128,16 +131,10 @@ def handle_issue_resolved(payload: Dict[str, Any], status_change: Dict[str, Any]
         assigned_user = issue_fields.get('assignee', {})
         assigned_name = assigned_user.get('displayName', 'Unassigned') if assigned_user else 'Unassigned'
         
-        # Get changelog for resolution details
-        changelog = payload.get('changelog', {})
-        histories = changelog.get('histories', [])
-        
-        resolved_by = 'Unknown'
-        resolved_at = utc_now_iso()
-        
-        for history in histories:
-            resolved_by = history.get('author', {}).get('displayName', 'Unknown')
-            resolved_at = history.get('created', resolved_at)
+        resolved_by = status_change.get('changed_by', 'Unknown')
+        resolved_at = status_change.get('changed_at', utc_now_iso())
+        from_status = status_change.get('from', 'N/A')
+        to_status = status_change.get('to', 'N/A')
         
         # Calculate resolution time (if we have created date)
         time_to_resolve = 'N/A'
@@ -159,7 +156,9 @@ def handle_issue_resolved(payload: Dict[str, Any], status_change: Dict[str, Any]
             resolved_by=resolved_by,
             assigned_to=assigned_name,
             time_to_resolve=time_to_resolve,
-            resolved_at=resolved_at
+            resolved_at=resolved_at,
+            from_status=from_status,
+            to_status=to_status
         )
         
         # Send to Teams
@@ -223,7 +222,8 @@ def handle_comment_created(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def build_resolution_message(issue_key: str, summary: str, resolved_by: str,
-                           assigned_to: str, time_to_resolve: str, resolved_at: str) -> Dict[str, Any]:
+                           assigned_to: str, time_to_resolve: str, resolved_at: str,
+                           from_status: str, to_status: str) -> Dict[str, Any]:
     """Build Teams message payload for issue resolution"""
     
     teams_payload = {
@@ -244,6 +244,10 @@ def build_resolution_message(issue_key: str, summary: str, resolved_by: str,
                     {
                         "name": "Resolved by",
                         "value": resolved_by
+                    },
+                    {
+                        "name": "Status change",
+                        "value": f"{from_status} -> {to_status}"
                     },
                     {
                         "name": "Assigned to",

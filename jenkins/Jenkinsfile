@@ -687,6 +687,12 @@ EOF
 
                 sh '''
                     ERROR_MESSAGE="Build #${BUILD_NUMBER} failed on ${BRANCH_NAME} (commit: ${COMMIT_HASH}). See: ${BUILD_URL}"
+                    ISSUE_KEY="N/A"
+                    ISSUE_SUMMARY="N/A"
+                    ISSUE_SUMMARY_PAYLOAD="N/A"
+                    JIRA_BROWSE_URL=""
+                    JIRA_ACTION="none"
+                    TEAMS_MESSAGE="❌ Build fallido - Revisar ticket de Jira"
 
                     echo "Error: $ERROR_MESSAGE"
 
@@ -699,13 +705,14 @@ EOF
 
                     if [ -z "$EFFECTIVE_JIRA_EMAIL" ]; then
                         echo "⚠ JIRA_USER_EMAIL is empty. Jira Cloud API token requires Basic auth (email + token)."
-                        ISSUE_KEY="N/A"
-                        JIRA_BROWSE_URL=""
                     else
                         JIRA_AUTH_TOKEN=$(printf "%s:%s" "$EFFECTIVE_JIRA_EMAIL" "${JIRA_API_TOKEN}" | base64 | tr -d '\\n')
                         JIRA_AUTH_HEADER="Authorization: Basic ${JIRA_AUTH_TOKEN}"
 
                         ERROR_SANITIZED=$(echo "$ERROR_MESSAGE" | tr -d '"' | cut -c1-500)
+                        ISSUE_SUMMARY="[PIPELINE FAILED] ${BRANCH_NAME} - ${COMMIT_HASH}"
+                        ISSUE_SUMMARY_SANITIZED=$(echo "$ISSUE_SUMMARY" | tr -d '"' | cut -c1-200)
+                        FAILURE_SIGNATURE="jenkins-failure-${COMMIT_HASH}"
 
                         # Auto-discover first valid issue type for this project
                         JIRA_ISSUE_TYPE=$(curl -s -X GET \
@@ -727,15 +734,50 @@ except:
 ")
                         echo "Using Jira issue type: \$JIRA_ISSUE_TYPE"
 
-                        ISSUE_RESPONSE=$(curl -s -X POST \
-                            "${JIRA_URL}/rest/api/3/issue" \
+                        # Deduplicate: reuse existing open issue with the same failure signature
+                        SEARCH_RESPONSE=$(curl -s -G \
+                            "${JIRA_URL}/rest/api/3/search" \
                             -H "$JIRA_AUTH_HEADER" \
-                            -H "Content-Type: application/json" \
-                            -d @- <<EOF
+                            --data-urlencode "jql=project = ${JIRA_PROJECT_KEY} AND labels = ${FAILURE_SIGNATURE} AND statusCategory != Done ORDER BY created DESC" \
+                            --data-urlencode "maxResults=1" \
+                            --data-urlencode "fields=summary")
+
+                        EXISTING_ISSUE_KEY=$(echo "$SEARCH_RESPONSE" | /usr/bin/python3.11 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    issues = data.get('issues', [])
+    print(issues[0].get('key', '') if issues else '')
+except:
+    print('')
+")
+
+                        EXISTING_ISSUE_SUMMARY=$(echo "$SEARCH_RESPONSE" | /usr/bin/python3.11 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    issues = data.get('issues', [])
+    print(issues[0].get('fields', {}).get('summary', '') if issues else '')
+except:
+    print('')
+")
+
+                        if [ -n "$EXISTING_ISSUE_KEY" ]; then
+                            ISSUE_KEY="$EXISTING_ISSUE_KEY"
+                            ISSUE_SUMMARY="${EXISTING_ISSUE_SUMMARY:-$ISSUE_SUMMARY}"
+                            JIRA_BROWSE_URL="${JIRA_URL}/browse/${ISSUE_KEY}"
+                            JIRA_ACTION="reused"
+                            echo "ℹ Reusing existing Jira ticket: $ISSUE_KEY"
+                        else
+                            ISSUE_RESPONSE=$(curl -s -X POST \
+                                "${JIRA_URL}/rest/api/3/issue" \
+                                -H "$JIRA_AUTH_HEADER" \
+                                -H "Content-Type: application/json" \
+                                -d @- <<EOF
 {
     "fields": {
         "project": {"key": "${JIRA_PROJECT_KEY}"},
-        "summary": "[BUILD #${BUILD_NUMBER} FAILED] ${BRANCH_NAME} - ${COMMIT_HASH}",
+        "summary": "${ISSUE_SUMMARY_SANITIZED}",
         "description": {
             "type": "doc",
             "version": 1,
@@ -749,22 +791,34 @@ except:
             ]
         },
         "issuetype": {"name": "${JIRA_ISSUE_TYPE}"},
-        "labels": ["jenkins", "failed-build"]
+        "labels": ["jenkins", "failed-build", "${FAILURE_SIGNATURE}"]
     }
 }
 EOF
 )
 
-                        ISSUE_KEY=$(echo "$ISSUE_RESPONSE" | grep -o '"key":"[^"]*' | cut -d'"' -f4)
+                            ISSUE_KEY=$(echo "$ISSUE_RESPONSE" | grep -o '"key":"[^"]*' | cut -d'"' -f4)
 
-                        if [ -n "$ISSUE_KEY" ] && [ "$ISSUE_KEY" != "null" ]; then
-                            echo "✓ Jira ticket created: $ISSUE_KEY"
-                            JIRA_BROWSE_URL="${JIRA_URL}/browse/${ISSUE_KEY}"
-                        else
-                            echo "⚠ Failed to create Jira ticket"
-                            echo "Response: $ISSUE_RESPONSE"
-                            ISSUE_KEY="N/A"
-                            JIRA_BROWSE_URL=""
+                            if [ -n "$ISSUE_KEY" ] && [ "$ISSUE_KEY" != "null" ]; then
+                                echo "✓ Jira ticket created: $ISSUE_KEY"
+                                JIRA_BROWSE_URL="${JIRA_URL}/browse/${ISSUE_KEY}"
+                                JIRA_ACTION="created"
+                            else
+                                echo "⚠ Failed to create Jira ticket"
+                                echo "Response: $ISSUE_RESPONSE"
+                                ISSUE_KEY="N/A"
+                                JIRA_BROWSE_URL=""
+                                ISSUE_SUMMARY="N/A"
+                                JIRA_ACTION="none"
+                            fi
+                        fi
+
+                        ISSUE_SUMMARY_PAYLOAD=$(echo "$ISSUE_SUMMARY" | tr -d '"' | cut -c1-180)
+
+                        if [ "$JIRA_ACTION" = "created" ]; then
+                            TEAMS_MESSAGE="❌ Build fallido - Ticket Jira creado: ${ISSUE_KEY} (${ISSUE_SUMMARY_PAYLOAD})"
+                        elif [ "$JIRA_ACTION" = "reused" ]; then
+                            TEAMS_MESSAGE="❌ Build fallido - Ticket Jira reutilizado: ${ISSUE_KEY} (${ISSUE_SUMMARY_PAYLOAD})"
                         fi
                     fi
 
@@ -777,10 +831,12 @@ EOF
     "branch": "${BRANCH_NAME}",
     "commit": "${COMMIT_HASH}",
     "status": "FALLIDO",
-    "message": "❌ Build fallido - Revisar ticket de Jira",
+    "message": "$TEAMS_MESSAGE",
     "environment": "QA",
     "error": "$ERROR_MESSAGE",
     "jira_ticket": "$ISSUE_KEY",
+    "jira_ticket_summary": "$ISSUE_SUMMARY_PAYLOAD",
+    "jira_action": "$JIRA_ACTION",
     "jira_url": "$JIRA_BROWSE_URL",
     "build_url": "${BUILD_URL}",
     "timestamp": "$(date -u +\'%Y-%m-%dT%H:%M:%SZ\')"
