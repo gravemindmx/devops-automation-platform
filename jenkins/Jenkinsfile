@@ -55,7 +55,7 @@ pipeline {
         )
         string(
             name: 'JIRA_USER_EMAIL',
-            defaultValue: 'alberto.juan@imony.tech',
+            defaultValue: 'infraestructura@imony.mx',
             description: 'Optional Jira user email. If provided, Jira ticket creation uses Basic auth (email + token).'
         )
         booleanParam(
