@@ -55,7 +55,7 @@ pipeline {
         )
         string(
             name: 'JIRA_USER_EMAIL',
-            defaultValue: '',
+            defaultValue: 'alberto.juan@imony.tech',
             description: 'Optional Jira user email. If provided, Jira ticket creation uses Basic auth (email + token).'
         )
         booleanParam(
@@ -108,7 +108,7 @@ pipeline {
         // Jira
         JIRA_URL = credentials('jira-url')
         JIRA_API_TOKEN = credentials('jira-api-token')
-        JIRA_PROJECT_KEY = 'SCRUM'
+        JIRA_PROJECT_KEY = 'NFRTST'
         INFRA_READY = 'true'
 
         // Teams
@@ -690,18 +690,19 @@ EOF
                     echo "Error: $ERROR_MESSAGE"
 
                     # Step 1: Create Jira ticket
-                    if [ -n "${JIRA_USER_EMAIL}" ]; then
+                    if [ -z "${JIRA_USER_EMAIL}" ]; then
+                        echo "⚠ JIRA_USER_EMAIL is empty. Jira Cloud API token requires Basic auth (email + token)."
+                        ISSUE_KEY="N/A"
+                        JIRA_BROWSE_URL=""
+                    else
                         JIRA_AUTH_TOKEN=$(printf "%s:%s" "${JIRA_USER_EMAIL}" "${JIRA_API_TOKEN}" | base64 | tr -d '\\n')
                         JIRA_AUTH_HEADER="Authorization: Basic ${JIRA_AUTH_TOKEN}"
-                    else
-                        JIRA_AUTH_HEADER="Authorization: Bearer ${JIRA_API_TOKEN}"
-                    fi
 
-                    ISSUE_RESPONSE=$(curl -s -X POST \
-                        "${JIRA_URL}/rest/api/3/issue" \
-                        -H "$JIRA_AUTH_HEADER" \
-                        -H "Content-Type: application/json" \
-                        -d @- <<EOF
+                        ISSUE_RESPONSE=$(curl -s -X POST \
+                            "${JIRA_URL}/rest/api/3/issue" \
+                            -H "$JIRA_AUTH_HEADER" \
+                            -H "Content-Type: application/json" \
+                            -d @- <<EOF
 {
     "fields": {
         "project": {"key": "${JIRA_PROJECT_KEY}"},
@@ -715,16 +716,17 @@ EOF
 EOF
 )
 
-                    ISSUE_KEY=$(echo "$ISSUE_RESPONSE" | grep -o '"key":"[^"]*' | cut -d'"' -f4)
+                        ISSUE_KEY=$(echo "$ISSUE_RESPONSE" | grep -o '"key":"[^"]*' | cut -d'"' -f4)
 
-                    if [ -n "$ISSUE_KEY" ] && [ "$ISSUE_KEY" != "null" ]; then
-                        echo "✓ Jira ticket created: $ISSUE_KEY"
-                        JIRA_BROWSE_URL="${JIRA_URL}/browse/${ISSUE_KEY}"
-                    else
-                        echo "⚠ Failed to create Jira ticket"
-                        echo "Response: $ISSUE_RESPONSE"
-                        ISSUE_KEY="N/A"
-                        JIRA_BROWSE_URL=""
+                        if [ -n "$ISSUE_KEY" ] && [ "$ISSUE_KEY" != "null" ]; then
+                            echo "✓ Jira ticket created: $ISSUE_KEY"
+                            JIRA_BROWSE_URL="${JIRA_URL}/browse/${ISSUE_KEY}"
+                        else
+                            echo "⚠ Failed to create Jira ticket"
+                            echo "Response: $ISSUE_RESPONSE"
+                            ISSUE_KEY="N/A"
+                            JIRA_BROWSE_URL=""
+                        fi
                     fi
 
                     # Step 2: Notify Teams via Lambda
