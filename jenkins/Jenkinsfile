@@ -70,7 +70,7 @@ pipeline {
         )
         string(
             name: 'APP_REPO_BRANCH',
-            defaultValue: 'main',
+            defaultValue: 'develop',
             description: 'Branch to checkout from secondary application repository'
         )
     }
@@ -228,10 +228,11 @@ pipeline {
                             echo "Target branch: ${TARGET_BRANCH}"
                             echo "Commit: ${VERIFY_COMMIT}"
 
-                            if [ "${TARGET_BRANCH}" != "develop" ] && [ "${TARGET_BRANCH}" != "main" ]; then
-                                echo "Branch ${TARGET_BRANCH} is outside protected branches (develop/main). Skipping PR policy enforcement."
+                            if [ "${TARGET_BRANCH}" != "develop" ]; then
+                                echo "❌ Policy violation: QA promotion is only allowed from merged PRs into develop."
+                                echo "Current target branch: ${TARGET_BRANCH}"
                                 rm -rf app-repo-policy-check || true
-                                exit 0
+                                exit 1
                             fi
 
                             if [ -z "${VERIFY_ORG}" ] || [ -z "${VERIFY_REPO}" ] || [ -z "${VERIFY_COMMIT}" ]; then
@@ -266,7 +267,7 @@ except Exception:
 
                             if [ "${HAS_VALID_MERGED_PR}" != "yes" ]; then
                                 echo "❌ Policy violation: Commit ${VERIFY_COMMIT} is not associated with a merged PR into ${TARGET_BRANCH}."
-                                echo "Only merged PR changes to develop/main are allowed for QA deployment."
+                                echo "Only merged PR changes to develop are allowed for QA deployment."
                                 rm -rf app-repo-policy-check || true
                                 exit 1
                             fi

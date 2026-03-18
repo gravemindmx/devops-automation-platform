@@ -640,8 +640,9 @@ Cada merge a `develop` dispara el pipeline completo automáticamente vía webhoo
 
 Política obligatoria de promoción a QA:
 
-- El pipeline valida que el commit evaluado esté asociado a un PR mergeado hacia `develop` o `main`.
+- El pipeline valida que el commit evaluado esté asociado a un PR mergeado hacia `develop`.
 - Si detecta push directo sin PR (o commit sin PR asociado), el pipeline falla antes de Build/Deploy.
+- Si la rama objetivo no es `develop`, el pipeline bloquea la promoción a QA.
 - En flujo con repo app (`RUN_APP_REPO_TESTS=true`), la validación se hace sobre el commit HEAD del repo app en la rama objetivo.
 
 ### Crear rama de feature desde Jenkins (opcional)
