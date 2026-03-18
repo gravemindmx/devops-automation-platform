@@ -38,6 +38,7 @@ pipeline {
         // ── Jira ─────────────────────────────────────────────────────────────
         JIRA_URL         = credentials('jira-url')
         JIRA_API_TOKEN   = credentials('jira-api-token')
+        JIRA_USER_EMAIL  = 'infraestructura@imony.mx'
         JIRA_PROJECT_KEY = 'DEVOPS'        // Cambia por tu project key
 
         // ── Teams ─────────────────────────────────────────────────────────────
@@ -149,20 +150,36 @@ EOF
                     ERROR_MSG="Build #${BUILD_NUMBER} falló en ${BRANCH_NAME} (${COMMIT_HASH}). Ver: ${BUILD_URL}"
 
                     # Crear ticket Jira
-                    RESP=$(curl -s -X POST \
+                                        JIRA_AUTH_TOKEN=$(printf "%s:%s" "${JIRA_USER_EMAIL}" "${JIRA_API_TOKEN}" | base64 | tr -d '\n')
+
+                                        RESP=$(curl -s -X POST \
                         "${JIRA_URL}/rest/api/3/issue" \
-                        -H "Authorization: Bearer ${JIRA_API_TOKEN}" \
+                                                -H "Authorization: Basic ${JIRA_AUTH_TOKEN}" \
                         -H "Content-Type: application/json" \
-                        -d "{
-                            \\"fields\\": {
-                                \\"project\\": {\\"key\\": \\"${JIRA_PROJECT_KEY}\\"},
-                                \\"summary\\": \\"[BUILD FALLIDO] ${APP_NAME} #${BUILD_NUMBER} — ${BRANCH_NAME}\\",
-                                \\"description\\": \\"${ERROR_MSG}\\",
-                                \\"issuetype\\": {\\"name\\": \\"Bug\\"},
-                                \\"priority\\": {\\"name\\": \\"High\\"},
-                                \\"labels\\": [\\"jenkins\\", \\"failed-build\\"]
-                            }
-                        }")
+                                                -d @- <<EOF
+{
+    "fields": {
+        "project": {"key": "${JIRA_PROJECT_KEY}"},
+        "summary": "[BUILD FALLIDO] ${APP_NAME} #${BUILD_NUMBER} - ${BRANCH_NAME}",
+        "description": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+                {
+                    "type": "paragraph",
+                    "content": [
+                        {"type": "text", "text": "${ERROR_MSG}"}
+                    ]
+                }
+            ]
+        },
+        "issuetype": {"name": "Bug"},
+        "priority": {"name": "High"},
+        "labels": ["jenkins", "failed-build"]
+    }
+}
+EOF
+)
 
                     ISSUE_KEY=$(echo "$RESP" | grep -o '"key":"[^"]*' | cut -d'"' -f4)
                     JIRA_LINK=""

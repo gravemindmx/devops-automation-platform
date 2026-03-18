@@ -14,11 +14,12 @@ BRANCH_NAME="${6:-develop}"
 COMMIT_HASH="${7:-}"
 ERROR_MESSAGE="${8:-Build failed - see logs}"
 ASSIGNEE_USER="${9:-qa-team}"
+JIRA_USER_EMAIL="${10:-infraestructura@imony.mx}"
 
 # Validation
-if [ -z "$JIRA_URL" ] || [ -z "$JIRA_API_TOKEN" ]; then
-    echo "❌ Error: Jira URL and API token are required"
-    echo "Usage: $0 <jira_url> <jira_api_token> <project_key> <build_number> <build_url> <branch> <commit> <error_message> [assignee]"
+if [ -z "$JIRA_URL" ] || [ -z "$JIRA_API_TOKEN" ] || [ -z "$JIRA_USER_EMAIL" ]; then
+  echo "❌ Error: Jira URL, API token and Jira user email are required"
+  echo "Usage: $0 <jira_url> <jira_api_token> <project_key> <build_number> <build_url> <branch> <commit> <error_message> [assignee] [jira_user_email]"
     exit 1
 fi
 
@@ -37,9 +38,11 @@ ERROR_SANITIZED=$(echo "$ERROR_MESSAGE" | sed 's/"//g' | cut -c1-500)
 # Create Jira issue via API
 echo "📋 Creating Jira issue..."
 
+JIRA_AUTH_TOKEN=$(printf "%s:%s" "$JIRA_USER_EMAIL" "$JIRA_API_TOKEN" | base64 | tr -d '\n')
+
 ISSUE_RESPONSE=$(curl -s -X POST \
     "${JIRA_URL}/rest/api/3/issue" \
-    -H "Authorization: Bearer ${JIRA_API_TOKEN}" \
+  -H "Authorization: Basic ${JIRA_AUTH_TOKEN}" \
     -H "Content-Type: application/json" \
     -d @- <<EOF
 {
@@ -160,7 +163,7 @@ if [ -n "$ISSUE_KEY" ] && [ "$ISSUE_KEY" != "null" ]; then
         
         ASSIGN_RESPONSE=$(curl -s -X PUT \
             "${JIRA_URL}/rest/api/3/issue/${ISSUE_KEY}/assignee" \
-            -H "Authorization: Bearer ${JIRA_API_TOKEN}" \
+          -H "Authorization: Basic ${JIRA_AUTH_TOKEN}" \
             -H "Content-Type: application/json" \
             -d @- <<EOF
 {

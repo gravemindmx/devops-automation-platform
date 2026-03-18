@@ -404,11 +404,16 @@ pipeline {
                             set -e
 
                             rm -rf app-repo
+                            rm -f .app_repo_commit
                             APP_REPO_AUTH_URL=$(echo "${APP_REPO_URL}" | sed "s#https://#https://${GH_TOKEN}@#")
 
                             git clone --branch "${APP_REPO_BRANCH}" --single-branch "${APP_REPO_AUTH_URL}" app-repo
 
                             cd app-repo
+                            APP_REPO_COMMIT=$(git rev-parse --short=8 HEAD)
+                            echo "$APP_REPO_COMMIT" > ../.app_repo_commit
+                            echo "App repository commit under test: $APP_REPO_COMMIT"
+
                             if [ -f "requirements.txt" ]; then
                                 "${PYTHON_BIN}" -m pip install --quiet -r requirements.txt
                             fi
@@ -763,7 +768,15 @@ EOF
                 echo "═════════════════════════════════════════"
 
                 sh '''
-                    ERROR_MESSAGE="Build #${BUILD_NUMBER} failed on ${BRANCH_NAME} (commit: ${COMMIT_HASH}). See: ${BUILD_URL}"
+                    INCIDENT_COMMIT="${COMMIT_HASH}"
+                    if [ -f ".app_repo_commit" ]; then
+                        APP_TEST_COMMIT=$(cat .app_repo_commit | tr -d '\\n')
+                        if [ -n "$APP_TEST_COMMIT" ]; then
+                            INCIDENT_COMMIT="$APP_TEST_COMMIT"
+                        fi
+                    fi
+
+                    ERROR_MESSAGE="Build #${BUILD_NUMBER} failed on ${BRANCH_NAME} (commit: ${INCIDENT_COMMIT}). See: ${BUILD_URL}"
                     ISSUE_KEY="N/A"
                     ISSUE_SUMMARY="N/A"
                     ISSUE_SUMMARY_PAYLOAD="N/A"
@@ -787,9 +800,9 @@ EOF
                         JIRA_AUTH_HEADER="Authorization: Basic ${JIRA_AUTH_TOKEN}"
 
                         ERROR_SANITIZED=$(echo "$ERROR_MESSAGE" | tr -d '"' | cut -c1-500)
-                        ISSUE_SUMMARY="[PIPELINE FAILED] ${BRANCH_NAME} - ${COMMIT_HASH}"
+                        ISSUE_SUMMARY="[PIPELINE FAILED] ${BRANCH_NAME} - ${INCIDENT_COMMIT}"
                         ISSUE_SUMMARY_SANITIZED=$(echo "$ISSUE_SUMMARY" | tr -d '"' | cut -c1-200)
-                        FAILURE_SIGNATURE="jenkins-failure-${COMMIT_HASH}"
+                        FAILURE_SIGNATURE="jenkins-failure-${INCIDENT_COMMIT}"
                         BRANCH_LABEL=$(echo "jenkins-branch-${BRANCH_NAME}" | tr '/' '-' | tr ' ' '-' | cut -c1-100)
 
                         # Auto-discover first valid issue type for this project
@@ -907,7 +920,7 @@ EOF
     "build_number": "${BUILD_NUMBER}",
     "repository": "${APP_REPO_URL:-${GIT_URL}}",
     "branch": "${BRANCH_NAME}",
-    "commit": "${COMMIT_HASH}",
+    "commit": "${INCIDENT_COMMIT}",
     "status": "FALLIDO",
     "message": "$TEAMS_MESSAGE",
     "environment": "QA",
