@@ -652,7 +652,7 @@ EOF
     "commit": "${COMMIT_HASH}",
     "resolved_by": "${COMMIT_AUTHOR}",
     "status": "EXITOSO",
-    "message": "✅ Build exitoso - Desplegado a QA",
+    "message": "✅ Build exitoso - Desplegado a QA | Resuelto por: ${COMMIT_AUTHOR}",
     "environment": "QA",
     "build_url": "${BUILD_URL}",
     "timestamp": "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
