@@ -705,7 +705,27 @@ EOF
                         JIRA_AUTH_TOKEN=$(printf "%s:%s" "$EFFECTIVE_JIRA_EMAIL" "${JIRA_API_TOKEN}" | base64 | tr -d '\\n')
                         JIRA_AUTH_HEADER="Authorization: Basic ${JIRA_AUTH_TOKEN}"
 
-                        ERROR_SANITIZED=$(echo "$ERROR_MESSAGE" | tr -d '"\\' | cut -c1-500)
+                        ERROR_SANITIZED=$(echo "$ERROR_MESSAGE" | tr -d '"' | cut -c1-500)
+
+                        # Auto-discover first valid issue type for this project
+                        JIRA_ISSUE_TYPE=$(curl -s -X GET \
+                            "${JIRA_URL}/rest/api/3/project/${JIRA_PROJECT_KEY}" \
+                            -H "$JIRA_AUTH_HEADER" \
+                            | /usr/bin/python3.11 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    types = [t['name'] for t in data.get('issueTypes', [])]
+    preferred = ['Incident','Incidente','Service Request','Solicitud de servicio','Bug','Task','Story']
+    for p in preferred:
+        if p in types:
+            print(p)
+            sys.exit(0)
+    print(types[0] if types else 'Bug')
+except:
+    print('Bug')
+")
+                        echo "Using Jira issue type: \$JIRA_ISSUE_TYPE"
 
                         ISSUE_RESPONSE=$(curl -s -X POST \
                             "${JIRA_URL}/rest/api/3/issue" \
@@ -728,8 +748,7 @@ EOF
                 }
             ]
         },
-        "issuetype": {"name": "Incident"},
-        "priority": {"name": "High"},
+        "issuetype": {"name": "${JIRA_ISSUE_TYPE}"},
         "labels": ["jenkins", "failed-build"]
     }
 }
