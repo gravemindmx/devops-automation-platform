@@ -653,10 +653,11 @@ EOF
                             JIRA_AUTH_TOKEN=$(printf "%s:%s" "${JIRA_DEFAULT_USER_EMAIL}" "${JIRA_API_TOKEN}" | base64 | tr -d '\\n')
                             JIRA_AUTH_HEADER="Authorization: Basic ${JIRA_AUTH_TOKEN}"
 
+                            BRANCH_LABEL=$(echo "jenkins-branch-${BRANCH_NAME}" | tr '/' '-' | tr ' ' '-' | cut -c1-100)
                             SEARCH_RESP=$(curl -s -G "${JIRA_URL}/rest/api/3/search/jql" \
                                 -H "$JIRA_AUTH_HEADER" \
-                                --data-urlencode "jql=project = ${JIRA_PROJECT_KEY} AND labels = \\"failed-build\\" AND statusCategory != Done ORDER BY created DESC" \
-                                --data-urlencode "maxResults=10" \
+                                --data-urlencode "jql=project = ${JIRA_PROJECT_KEY} AND labels = \\"failed-build\\" AND labels = \\"${BRANCH_LABEL}\\" AND statusCategory != Done ORDER BY created DESC" \
+                                --data-urlencode "maxResults=1" \
                                 --data-urlencode "fields=summary,status")
 
                             OPEN_KEYS=$(echo "$SEARCH_RESP" | /usr/bin/python3.11 -c "
@@ -789,6 +790,7 @@ EOF
                         ISSUE_SUMMARY="[PIPELINE FAILED] ${BRANCH_NAME} - ${COMMIT_HASH}"
                         ISSUE_SUMMARY_SANITIZED=$(echo "$ISSUE_SUMMARY" | tr -d '"' | cut -c1-200)
                         FAILURE_SIGNATURE="jenkins-failure-${COMMIT_HASH}"
+                        BRANCH_LABEL=$(echo "jenkins-branch-${BRANCH_NAME}" | tr '/' '-' | tr ' ' '-' | cut -c1-100)
 
                         # Auto-discover first valid issue type for this project
                         JIRA_ISSUE_TYPE=$(curl -s -X GET \
@@ -867,7 +869,7 @@ except:
             ]
         },
         "issuetype": {"name": "${JIRA_ISSUE_TYPE}"},
-        "labels": ["jenkins", "failed-build", "${FAILURE_SIGNATURE}"]
+                        "labels": ["jenkins", "failed-build", "${FAILURE_SIGNATURE}", "${BRANCH_LABEL}"]
     }
 }
 EOF
