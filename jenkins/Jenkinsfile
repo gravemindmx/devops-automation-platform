@@ -705,6 +705,8 @@ EOF
                         JIRA_AUTH_TOKEN=$(printf "%s:%s" "$EFFECTIVE_JIRA_EMAIL" "${JIRA_API_TOKEN}" | base64 | tr -d '\\n')
                         JIRA_AUTH_HEADER="Authorization: Basic ${JIRA_AUTH_TOKEN}"
 
+                        ERROR_SANITIZED=$(echo "$ERROR_MESSAGE" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g' | cut -c1-500)
+
                         ISSUE_RESPONSE=$(curl -s -X POST \
                             "${JIRA_URL}/rest/api/3/issue" \
                             -H "$JIRA_AUTH_HEADER" \
@@ -714,10 +716,21 @@ EOF
     "fields": {
         "project": {"key": "${JIRA_PROJECT_KEY}"},
         "summary": "[BUILD #${BUILD_NUMBER} FAILED] ${BRANCH_NAME} - ${COMMIT_HASH}",
-        "description": "$ERROR_MESSAGE",
+        "description": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+                {
+                    "type": "paragraph",
+                    "content": [
+                        {"type": "text", "text": "${ERROR_SANITIZED}"}
+                    ]
+                }
+            ]
+        },
         "issuetype": {"name": "Story"},
         "priority": {"name": "High"},
-        "labels": ["jenkins", "failed-build", "${BRANCH_NAME}"]
+        "labels": ["jenkins", "failed-build"]
     }
 }
 EOF
