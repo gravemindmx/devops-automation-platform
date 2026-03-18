@@ -653,7 +653,7 @@ EOF
                             JIRA_AUTH_TOKEN=$(printf "%s:%s" "${JIRA_DEFAULT_USER_EMAIL}" "${JIRA_API_TOKEN}" | base64 | tr -d '\\n')
                             JIRA_AUTH_HEADER="Authorization: Basic ${JIRA_AUTH_TOKEN}"
 
-                            SEARCH_RESP=$(curl -s -G "${JIRA_URL}/rest/api/3/search" \
+                            SEARCH_RESP=$(curl -s -G "${JIRA_URL}/rest/api/3/search/jql" \
                                 -H "$JIRA_AUTH_HEADER" \
                                 --data-urlencode "jql=project = ${JIRA_PROJECT_KEY} AND labels = \\"failed-build\\" AND statusCategory != Done ORDER BY created DESC" \
                                 --data-urlencode "maxResults=10" \
@@ -812,7 +812,7 @@ except:
 
                         # Deduplicate: reuse existing open issue with the same failure signature
                         SEARCH_RESPONSE=$(curl -s -G \
-                            "${JIRA_URL}/rest/api/3/search" \
+                            "${JIRA_URL}/rest/api/3/search/jql" \
                             -H "$JIRA_AUTH_HEADER" \
                             --data-urlencode "jql=project = ${JIRA_PROJECT_KEY} AND labels = ${FAILURE_SIGNATURE} AND statusCategory != Done ORDER BY created DESC" \
                             --data-urlencode "maxResults=1" \
