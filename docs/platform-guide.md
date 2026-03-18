@@ -15,7 +15,7 @@ Guía única para entender, configurar, desplegar y operar la plataforma.
 | **AWS Lambda – teams-notifier** | Envía notificaciones a Microsoft Teams (éxito, falla, resolución) |
 | **AWS Lambda – jira-event-handler** | Procesa webhooks de Jira y notifica en Teams cuando un ticket se resuelve |
 | **API Gateway** | Punto de entrada HTTP para ambas Lambdas (`POST /notify` y `POST /jira`) |
-| **GitHub** | Repositorio de código; dispara Jenkins vía webhook en merge a `develop` |
+| **GitHub** | Repositorio de código; dispara Jenkins vía webhook en commits o PR merges a `qa` y `prod` |
 | **Jira** | Gestión de incidentes; dispara jira-event-handler vía webhook al resolver tickets |
 | **Microsoft Teams** | Canal de notificaciones operativas |
 
@@ -36,7 +36,7 @@ Guía única para entender, configurar, desplegar y operar la plataforma.
 └─────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
-│  2. CI/CD AUTOMÁTICO (disparado por merge a develop)            │
+│  2. CI/CD AUTOMÁTICO (disparado por webhook en qa/prod)         │
 │                                                                 │
 │  GitHub Webhook  →  Jenkins (githubPush trigger)                │
 │       ↓                                                         │
@@ -299,7 +299,7 @@ Estas variables no van en `terraform.tfvars`; viven en Jenkins (credenciales, pa
 | `AWS_REGION` | Jenkinsfile (`environment`) | `jenkins/Jenkinsfile` | `us-east-1` |
 | `JIRA_USER_EMAIL` | Parámetro Jenkins | parámetro de job | opcional, se ignora si difiere de la cuenta técnica |
 | `APP_REPO_URL` | Parámetro Jenkins | parámetro de job | URL del repo app (repo 2) |
-| `APP_REPO_BRANCH` | Parámetro Jenkins | parámetro de job | `develop` |
+| `APP_REPO_BRANCH` | Parámetro Jenkins | parámetro de job | `qa` |
 | `RUN_APP_REPO_TESTS` | Parámetro Jenkins | parámetro de job | `true` para validar repo app |
 | `APPLY_TERRAFORM` | Parámetro Jenkins | parámetro de job | `true` solo para provisionar/actualizar infra |
 
@@ -443,7 +443,7 @@ Luego crear el job Pipeline:
 2. Activar trigger: `GitHub hook trigger for GITScm polling`
 3. **Pipeline script from SCM**
 4. Repositorio: este repo
-5. Rama: `develop`
+5. Rama: `qa` (y/o crear job equivalente para `prod`)
 6. Script path: `jenkins/Jenkinsfile`
 
 Si usarás Terraform desde Jenkins, ejecutar el job con:
@@ -476,7 +476,7 @@ Objetivo: activar descubrimiento por organización sin apagar tu job actual hast
     - Branch/PR discovery según tu flujo.
     - Script Path: `jenkins/Jenkinsfile`.
 6. Ejecuta un `Scan Organization Now` y confirma que se crean jobs por repo/branch.
-7. Prueba un repo piloto (merge a `develop`) y valida Build/Test/Deploy/Notificaciones.
+7. Prueba un repo piloto (commit o PR merge a `qa`) y valida Build/Test/Deploy/Notificaciones.
 8. Cuando el piloto esté estable, migra el resto de repos y recién entonces depreca el job clásico.
 
 Notas de compatibilidad del Jenkinsfile:
@@ -492,7 +492,7 @@ Notas de compatibilidad del Jenkinsfile:
 Recomendación operativa:
 
 1. Ejecuta piloto con lock activo (`LOCK_SINGLE_REPO=true`).
-2. Valida varios merges a `develop` en ese repo.
+2. Valida varios commits o PR merges a `qa` en ese repo.
 3. Cambia a `LOCK_SINGLE_REPO=false` recién al entrar a Organization Folder multirepo.
 
 ### 3.8 Configurar webhooks externos (Solo Jenkins)
@@ -562,7 +562,7 @@ En Jenkins → New Item → `app-piloto-ci` → Pipeline → OK:
 | Pipeline | SCM | `Git` |
 | Pipeline | Repository URL | `https://github.com/iMony-Tech/devops-automation-platform-test.git` |
 | Pipeline | Credentials | `github-token` |
-| Pipeline | Branch | `*/develop` |
+| Pipeline | Branch | `*/qa` (crear job adicional o multibranch para `prod`) |
 | Pipeline | Script Path | `jenkins/Jenkinsfile` |
 
 Las credenciales `jira-url`, `jira-api-token`, `teams-webhook` ya están configuradas en Jenkins — este job las reutiliza automáticamente por ID.
@@ -582,11 +582,11 @@ En GitHub → repo de app → Settings → Webhooks → Add webhook:
 
 ```
 Repo 1 (devops-automation-platform)
-  merge a develop  →  Job: devops-platform-deploy
+    commit o PR merge a qa/prod  →  Job: devops-platform-deploy
                    →  Despliega Lambdas en AWS
 
 Repo 2 (tu app)
-  merge a develop  →  Job: app-piloto-ci
+    commit o PR merge a qa/prod  →  Job: app-piloto-ci
                    →  Build + Test de la app
                         │
                     Éxito → Lambda teams-notifier → Teams ✅
@@ -622,15 +622,15 @@ Recomendación de operación:
 
 ## 4) Uso del Pipeline
 
-### Disparo automático (merge a develop)
+### Disparo automático (qa/prod)
 
-Cada merge a `develop` dispara el pipeline completo automáticamente vía webhook de GitHub.
+Cada commit o PR merge en `qa` o `prod` dispara el pipeline automáticamente vía webhook de GitHub.
 
-Política obligatoria de promoción a QA:
+Política obligatoria de ramas de promoción:
 
-- El pipeline valida que el commit evaluado esté asociado a un PR mergeado hacia `develop`.
-- Si detecta push directo sin PR (o commit sin PR asociado), el pipeline falla antes de Build/Deploy.
-- Si la rama objetivo no es `develop`, el pipeline bloquea la promoción a QA.
+- El pipeline solo acepta ejecuciones para ramas `qa` y `prod`.
+- Si la rama objetivo no es `qa` ni `prod`, el pipeline se bloquea antes de Build/Deploy.
+- Se valida si el commit viene de PR mergeado; si no, se permite continuar cuando el commit fue directo a `qa`/`prod`.
 - En flujo con repo app (`RUN_APP_REPO_TESTS=true`), la validación se hace sobre el commit HEAD del repo app en la rama objetivo.
 
 ### Eventos que Teams puede recibir
@@ -810,12 +810,12 @@ Nombres objetivo:
     - scripts externos (si existen)
 2. Ejecutar un build manual por job tras renombrar.
 3. Ejecutar un trigger real desde SCM para validar encadenamiento.
-4. Confirmar que el job 2 sigue obteniendo `jenkins/Jenkinsfile` desde `develop`.
+4. Confirmar que el job 2 sigue obteniendo `jenkins/Jenkinsfile` desde la rama objetivo (`qa`/`prod`).
 
 Nota sobre políticas de ramas en GitHub:
 
-- Si tu organización restringe la creación de `main`/`develop` a admins, el credencial `github-token` de Jenkins debe tener permisos de admin o bypass de reglas.
-- El flujo oficial es: `otra_rama` -> PR -> `develop` -> QA; Jenkins ya no crea ramas de trabajo.
+- Si tu organización restringe la creación de ramas protegidas (`qa`/`prod`), el credencial `github-token` de Jenkins debe tener permisos de admin o bypass de reglas.
+- El flujo oficial es: commits o PR merges en `qa`/`prod`; Jenkins ya no crea ramas de trabajo.
 - Si se requiere automatizar creación de ramas en el futuro, debe implementarse en un job separado y no en el pipeline de promoción a QA.
 
 ### 9.3 Criterio de aceptación del renombrado
@@ -834,7 +834,7 @@ Esta validación confirma el ciclo completo: falla controlada -> ticket Jira -> 
 ### 10.1 Escenario A: falla controlada
 
 1. Introducir una falla temporal de pruebas en repo app.
-2. Hacer push a `develop`.
+2. Hacer push a `qa` o `prod`.
 3. Evidencias esperadas en logs Jenkins:
     - `Pipeline FAILED - Error Handling`
     - `Using Jira issue type: ...`

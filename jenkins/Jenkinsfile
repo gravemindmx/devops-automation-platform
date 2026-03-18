@@ -11,7 +11,7 @@
  * 5. Notification (Success/Failure) -> Teams
  * 6. On Failure: Auto-create Jira ticket
  *
- * Triggers: Webhook from GitHub on develop branch merge
+ * Triggers: Webhook from GitHub on commits/PR merges to qa/prod
  */
 
 pipeline {
@@ -60,13 +60,13 @@ pipeline {
         )
         string(
             name: 'APP_REPO_BRANCH',
-            defaultValue: 'develop',
+            defaultValue: 'qa',
             description: 'Branch to checkout from secondary application repository'
         )
     }
 
     triggers {
-        // Triggered automatically by GitHub webhook on push/merge to develop
+        // Triggered automatically by GitHub webhook on commits/PR merges to qa/prod
         githubPush()
     }
 
@@ -215,8 +215,8 @@ pipeline {
                             echo "Target branch: ${TARGET_BRANCH}"
                             echo "Commit: ${VERIFY_COMMIT}"
 
-                            if [ "${TARGET_BRANCH}" != "develop" ]; then
-                                echo "❌ Policy violation: QA promotion is only allowed from merged PRs into develop."
+                            if [ "${TARGET_BRANCH}" != "qa" ] && [ "${TARGET_BRANCH}" != "prod" ]; then
+                                echo "❌ Policy violation: promotion only allowed from qa/prod branches."
                                 echo "Current target branch: ${TARGET_BRANCH}"
                                 rm -rf app-repo-policy-check || true
                                 exit 1
@@ -252,14 +252,13 @@ except Exception:
     print('no')
 ")
 
-                            if [ "${HAS_VALID_MERGED_PR}" != "yes" ]; then
-                                echo "❌ Policy violation: Commit ${VERIFY_COMMIT} is not associated with a merged PR into ${TARGET_BRANCH}."
-                                echo "Only merged PR changes to develop are allowed for QA deployment."
-                                rm -rf app-repo-policy-check || true
-                                exit 1
+                            if [ "${HAS_VALID_MERGED_PR}" = "yes" ]; then
+                                echo "✓ PR merge policy validated for commit ${VERIFY_COMMIT} on ${TARGET_BRANCH}."
+                            else
+                                echo "ℹ No merged PR associated for commit ${VERIFY_COMMIT} on ${TARGET_BRANCH}."
+                                echo "Proceeding because direct commits to qa/prod are allowed by current flow."
                             fi
 
-                            echo "✓ PR merge policy validated for commit ${VERIFY_COMMIT} on ${TARGET_BRANCH}."
                             rm -rf app-repo-policy-check || true
                         '''
                     }
