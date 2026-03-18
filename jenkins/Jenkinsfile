@@ -705,7 +705,7 @@ EOF
                         JIRA_AUTH_TOKEN=$(printf "%s:%s" "$EFFECTIVE_JIRA_EMAIL" "${JIRA_API_TOKEN}" | base64 | tr -d '\\n')
                         JIRA_AUTH_HEADER="Authorization: Basic ${JIRA_AUTH_TOKEN}"
 
-                        ERROR_SANITIZED=$(echo "$ERROR_MESSAGE" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g' | cut -c1-500)
+                        ERROR_SANITIZED=$(echo "$ERROR_MESSAGE" | tr -d '"\\' | cut -c1-500)
 
                         ISSUE_RESPONSE=$(curl -s -X POST \
                             "${JIRA_URL}/rest/api/3/issue" \
@@ -728,7 +728,7 @@ EOF
                 }
             ]
         },
-        "issuetype": {"name": "Story"},
+        "issuetype": {"name": "Incident"},
         "priority": {"name": "High"},
         "labels": ["jenkins", "failed-build"]
     }
