@@ -7,7 +7,7 @@ set -e
 # Parameters
 JIRA_URL="${1:-}"
 JIRA_API_TOKEN="${2:-}"
-JIRA_PROJECT_KEY="${3:-DEVOPS}"
+JIRA_PROJECT_KEY="${3:-NFRTST}"
 BUILD_NUMBER="${4:-}"
 BUILD_URL="${5:-}"
 BRANCH_NAME="${6:-develop}"
