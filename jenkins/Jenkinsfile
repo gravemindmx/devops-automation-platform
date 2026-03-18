@@ -641,8 +641,82 @@ EOF
                     echo "═════════════════════════════════════════"
 
                     sh '''
-                        # Create payload for Lambda
-                        COMMIT_AUTHOR=$(git log -1 --pretty=format:"%an <%ae>" 2>/dev/null || echo "Unknown")
+                        set +e
+                        COMMIT_AUTHOR=$(git log -1 --pretty=format:"%an" 2>/dev/null || echo "Unknown")
+                        COMMIT_AUTHOR_SAFE=$(echo "${COMMIT_AUTHOR}" | tr -d '"\\\\<>')
+
+                        RESOLVED_TICKET_KEYS=""
+                        RESOLVED_TICKET_URLS=""
+
+                        # --- Resolve open Jira failure tickets ---
+                        if [ -n "${JIRA_API_TOKEN}" ] && [ -n "${JIRA_DEFAULT_USER_EMAIL}" ]; then
+                            JIRA_AUTH_TOKEN=$(printf "%s:%s" "${JIRA_DEFAULT_USER_EMAIL}" "${JIRA_API_TOKEN}" | base64 | tr -d '\\n')
+                            JIRA_AUTH_HEADER="Authorization: Basic ${JIRA_AUTH_TOKEN}"
+
+                            SEARCH_RESP=$(curl -s -G "${JIRA_URL}/rest/api/3/search" \
+                                -H "$JIRA_AUTH_HEADER" \
+                                --data-urlencode "jql=project = ${JIRA_PROJECT_KEY} AND labels = \\"failed-build\\" AND statusCategory != Done ORDER BY created DESC" \
+                                --data-urlencode "maxResults=10" \
+                                --data-urlencode "fields=summary,status")
+
+                            OPEN_KEYS=$(echo "$SEARCH_RESP" | /usr/bin/python3.11 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    keys = [i['key'] for i in data.get('issues', [])]
+    print(' '.join(keys))
+except:
+    print('')
+")
+
+                            for TICKET_KEY in $OPEN_KEYS; do
+                                echo "Resolving Jira ticket: ${TICKET_KEY}"
+
+                                # Add resolution comment
+                                curl -s -X POST "${JIRA_URL}/rest/api/3/issue/${TICKET_KEY}/comment" \
+                                    -H "$JIRA_AUTH_HEADER" \
+                                    -H "Content-Type: application/json" \
+                                    -d "{\"body\":{\"type\":\"doc\",\"version\":1,\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Resuelto automaticamente por Jenkins build #${BUILD_NUMBER} | Commit: ${COMMIT_HASH} | Autor: ${COMMIT_AUTHOR_SAFE} | URL: ${BUILD_URL}\"}]}]}}" \
+                                    > /dev/null
+
+                                # Find transition ID for statusCategory=done
+                                TRANSITIONS=$(curl -s "${JIRA_URL}/rest/api/3/issue/${TICKET_KEY}/transitions" -H "$JIRA_AUTH_HEADER")
+                                DONE_ID=$(echo "$TRANSITIONS" | /usr/bin/python3.11 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    for t in data.get('transitions', []):
+        if t.get('to', {}).get('statusCategory', {}).get('key', '') == 'done':
+            print(t['id'])
+            sys.exit(0)
+    print('')
+except:
+    print('')
+")
+
+                                if [ -n "$DONE_ID" ]; then
+                                    curl -s -X POST "${JIRA_URL}/rest/api/3/issue/${TICKET_KEY}/transitions" \
+                                        -H "$JIRA_AUTH_HEADER" \
+                                        -H "Content-Type: application/json" \
+                                        -d "{\"transition\":{\"id\":\"${DONE_ID}\"}}" > /dev/null
+                                    echo "✓ Ticket ${TICKET_KEY} transitioned to Done"
+                                else
+                                    echo "⚠ No Done transition found for ${TICKET_KEY}"
+                                fi
+
+                                RESOLVED_TICKET_KEYS="${RESOLVED_TICKET_KEYS} ${TICKET_KEY}"
+                                RESOLVED_TICKET_URLS="${RESOLVED_TICKET_URLS} ${JIRA_URL}/browse/${TICKET_KEY}"
+                            done
+                        fi
+
+                        # --- Build Teams message ---
+                        TICKETS_TRIMMED=$(echo "$RESOLVED_TICKET_KEYS" | xargs)
+                        if [ -n "$TICKETS_TRIMMED" ]; then
+                            SUCCESS_MSG="✅ Build exitoso - Desplegado a QA | Resuelto por: ${COMMIT_AUTHOR_SAFE} | Tickets cerrados: ${TICKETS_TRIMMED}"
+                        else
+                            SUCCESS_MSG="✅ Build exitoso - Desplegado a QA | Resuelto por: ${COMMIT_AUTHOR_SAFE}"
+                        fi
+
                         PAYLOAD=$(cat <<EOF
 {
     "event_type": "build_success",
@@ -650,9 +724,10 @@ EOF
     "repository": "${APP_REPO_URL:-${GIT_URL}}",
     "branch": "${BRANCH_NAME}",
     "commit": "${COMMIT_HASH}",
-    "resolved_by": "${COMMIT_AUTHOR}",
+    "resolved_by": "${COMMIT_AUTHOR_SAFE}",
+    "resolved_tickets": "${TICKETS_TRIMMED}",
     "status": "EXITOSO",
-    "message": "✅ Build exitoso - Desplegado a QA | Resuelto por: ${COMMIT_AUTHOR}",
+    "message": "${SUCCESS_MSG}",
     "environment": "QA",
     "build_url": "${BUILD_URL}",
     "timestamp": "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
@@ -660,7 +735,6 @@ EOF
 EOF
 )
 
-                        # Invoke Lambda for Teams notification
                         aws lambda invoke \
                             --function-name "${LAMBDA_FUNCTION}" \
                             --region "${AWS_REGION}" \
