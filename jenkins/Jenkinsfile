@@ -691,7 +691,11 @@ EOF
                     echo "Error: $ERROR_MESSAGE"
 
                     # Step 1: Create Jira ticket
-                    EFFECTIVE_JIRA_EMAIL="${JIRA_USER_EMAIL:-${JIRA_DEFAULT_USER_EMAIL}}"
+                    EFFECTIVE_JIRA_EMAIL="${JIRA_DEFAULT_USER_EMAIL}"
+
+                    if [ -n "${JIRA_USER_EMAIL}" ] && [ "${JIRA_USER_EMAIL}" != "${JIRA_DEFAULT_USER_EMAIL}" ]; then
+                        echo "ℹ Ignoring JIRA_USER_EMAIL override from upstream (${JIRA_USER_EMAIL}) and using service account ${JIRA_DEFAULT_USER_EMAIL}."
+                    fi
 
                     if [ -z "$EFFECTIVE_JIRA_EMAIL" ]; then
                         echo "⚠ JIRA_USER_EMAIL is empty. Jira Cloud API token requires Basic auth (email + token)."
