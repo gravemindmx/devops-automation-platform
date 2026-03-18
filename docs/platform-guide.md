@@ -294,6 +294,27 @@ En Jenkins Credentials:
 - `teams-webhook`
 - `teams-qa-webhook`
 
+### 3.3.3 Variables del runtime del pipeline (Jenkinsfile)
+
+Estas variables no van en `terraform.tfvars`; viven en Jenkins (credenciales, parámetros o `environment` del pipeline).
+
+| Variable | Fuente | Dónde se define | Valor recomendado |
+|---|---|---|---|
+| `JIRA_URL` | Credencial Jenkins | `jira-url` | `https://<tu-org>.atlassian.net` |
+| `JIRA_API_TOKEN` | Credencial Jenkins | `jira-api-token` | API token de cuenta técnica Jira |
+| `JIRA_DEFAULT_USER_EMAIL` | Jenkinsfile (`environment`) | `jenkins/Jenkinsfile` | `infraestructura@imony.mx` |
+| `JIRA_PROJECT_KEY` | Jenkinsfile (`environment`) | `jenkins/Jenkinsfile` | `NFRTST` |
+| `TEAMS_WEBHOOK` | Credencial Jenkins | `teams-webhook` | Webhook Teams canal principal |
+| `TEAMS_QA_WEBHOOK` | Credencial Jenkins | `teams-qa-webhook` | Webhook Teams canal QA |
+| `LAMBDA_FUNCTION` | Jenkinsfile (`environment`) | `jenkins/Jenkinsfile` | `devops-platform-teams-notifier` |
+| `QA_JIRA_HANDLER_FUNCTION` | Jenkinsfile (`environment`) | `jenkins/Jenkinsfile` | `devops-platform-jira-event-handler` |
+| `AWS_REGION` | Jenkinsfile (`environment`) | `jenkins/Jenkinsfile` | `us-east-1` |
+| `JIRA_USER_EMAIL` | Parámetro Jenkins | parámetro de job | opcional, se ignora si difiere de la cuenta técnica |
+| `APP_REPO_URL` | Parámetro Jenkins | parámetro de job | URL del repo app (repo 2) |
+| `APP_REPO_BRANCH` | Parámetro Jenkins | parámetro de job | `develop` |
+| `RUN_APP_REPO_TESTS` | Parámetro Jenkins | parámetro de job | `true` para validar repo app |
+| `APPLY_TERRAFORM` | Parámetro Jenkins | parámetro de job | `true` solo para provisionar/actualizar infra |
+
 ### 3.4 Crear y completar `terraform.tfvars` (Ambas rutas)
 
 ```bash
@@ -584,6 +605,31 @@ Repo 2 (tu app)
                     Fallo → Jira ticket + teams-notifier → Teams ❌
 ```
 
+### 3.11 Flujo recomendado de 3 jobs Jenkins (nombres descriptivos)
+
+Para que el flujo sea fácil de operar, usa estos 3 jobs con nombres explícitos:
+
+| Orden | Nombre sugerido | Nombre actual típico | Trigger | Responsabilidad |
+|---|---|---|---|---|
+| 1 | `01-app-repo-trigger` | `app-repo-trigger` | SCM change en repo app | Detecta cambios en repo app y dispara el orquestador |
+| 2 | `02-platform-ci-qa-orchestrator` | `app-pilot-ci` | Upstream (`01-app-repo-trigger`) o manual | Ejecuta `jenkins/Jenkinsfile`: build/test/deploy/notificaciones/Jira |
+| 3 | `03-platform-infra-bootstrap` | `devops-platform-deploy` (o job dedicado) | Manual bajo demanda | Ejecuta pipeline con `APPLY_TERRAFORM=true` para crear/actualizar infraestructura |
+
+Flujo operacional:
+
+1. Un commit en repo app activa `01-app-repo-trigger`.
+2. `01-app-repo-trigger` dispara `02-platform-ci-qa-orchestrator`.
+3. `02-platform-ci-qa-orchestrator` corre CI/CD completo:
+    - Si falla: crea/reutiliza ticket Jira + notifica Teams.
+    - Si pasa: notifica Teams y puede cerrar ticket abierto más reciente del branch.
+4. `03-platform-infra-bootstrap` solo se usa para cambios de infraestructura (no en cada commit).
+
+Recomendación de operación:
+
+- Usa `03-platform-infra-bootstrap` únicamente cuando cambie Terraform, IAM, API Gateway o nombres de Lambda.
+- Mantén `02-platform-ci-qa-orchestrator` para el flujo diario de la app.
+- No mezcles responsabilidades de infraestructura con validación diaria de app.
+
 ---
 
 ## 4) Uso del Pipeline
@@ -613,6 +659,31 @@ Jenkins creará y pusheará la rama en GitHub usando el token `github-token`.
 | `deployment_failure` | Despliegue fallido |
 | `jira_resolved` | Ticket resuelto manualmente vía Lambda |
 | *(desde Jira webhook)* | Ticket cambia a DONE/RESOLVED/CLOSED |
+
+### 4.1 Comportamiento validado de Jira y deduplicación
+
+Comportamiento implementado y validado:
+
+1. En falla de pipeline:
+    - Usa autenticación Basic (`email:api_token`) con cuenta técnica Jira.
+    - Descubre automáticamente el `issueType` válido del proyecto Jira.
+    - Reutiliza ticket si existe uno abierto con label `jenkins-failure-<commit_hash>`.
+    - Si no existe, crea ticket con labels:
+      - `jenkins`
+      - `failed-build`
+      - `jenkins-failure-<commit_hash>`
+      - `jenkins-branch-<branch_normalizado>`
+
+2. En éxito de pipeline:
+    - Busca tickets abiertos del branch actual (`failed-build` + `jenkins-branch-<branch_normalizado>`).
+    - Limita a `maxResults=1` para cerrar solo el más reciente del branch.
+    - Agrega comentario de resolución automática (build, commit, autor, URL).
+    - Transiciona a estado `Done` usando transición Jira válida.
+    - Envía Teams con `Resuelto por` y `Tickets cerrados`.
+
+3. Compatibilidad Jira Cloud:
+    - Para búsquedas JQL se usa `/rest/api/3/search/jql` (no `/rest/api/3/search`, deprecado).
+    - El campo `description` de Jira se envía en formato ADF (Atlassian Document Format).
 
 ---
 
