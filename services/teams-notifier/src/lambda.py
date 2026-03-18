@@ -102,7 +102,38 @@ def format_build_success(payload: Dict[str, Any]) -> Dict:
     commit = payload.get('commit', 'N/A')
     build_url = payload.get('build_url', '')
     environment = payload.get('environment', 'qa')
+    resolved_by = payload.get('resolved_by', '')
     
+    facts = [
+        {
+            "name": "Build Number",
+            "value": str(build_number)
+        },
+        {
+            "name": "Branch",
+            "value": branch
+        },
+        {
+            "name": "Commit",
+            "value": commit
+        },
+        {
+            "name": "Environment",
+            "value": environment.upper()
+        },
+    ]
+
+    if resolved_by:
+        facts.append({
+            "name": "Resuelto por",
+            "value": resolved_by
+        })
+
+    facts.append({
+        "name": "Time",
+        "value": utc_now_iso()
+    })
+
     message = {
         "@type": "MessageCard",
         "@context": "https://schema.org/extensions",
@@ -113,28 +144,7 @@ def format_build_success(payload: Dict[str, Any]) -> Dict:
             {
                 "activityTitle": f"Build #{build_number} - {branch}",
                 "activitySubtitle": f"Status: SUCCESS - Deployed to {environment.upper()}",
-                "facts": [
-                    {
-                        "name": "Build Number",
-                        "value": str(build_number)
-                    },
-                    {
-                        "name": "Branch",
-                        "value": branch
-                    },
-                    {
-                        "name": "Commit",
-                        "value": commit
-                    },
-                    {
-                        "name": "Environment",
-                        "value": environment.upper()
-                    },
-                    {
-                        "name": "Time",
-                        "value": utc_now_iso()
-                    }
-                ],
+                "facts": facts,
                 "markdown": True
             }
         ],

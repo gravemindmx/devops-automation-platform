@@ -642,6 +642,7 @@ EOF
 
                     sh '''
                         # Create payload for Lambda
+                        COMMIT_AUTHOR=$(git log -1 --pretty=format:"%an <%ae>" 2>/dev/null || echo "Unknown")
                         PAYLOAD=$(cat <<EOF
 {
     "event_type": "build_success",
@@ -649,6 +650,7 @@ EOF
     "repository": "${APP_REPO_URL:-${GIT_URL}}",
     "branch": "${BRANCH_NAME}",
     "commit": "${COMMIT_HASH}",
+    "resolved_by": "${COMMIT_AUTHOR}",
     "status": "EXITOSO",
     "message": "✅ Build exitoso - Desplegado a QA",
     "environment": "QA",
