@@ -754,3 +754,121 @@ python -m pytest services/jira-event-handler/tests/ -v
 - Actualizar **este archivo** para cambios operativos o de arquitectura.
 - No crear archivos históricos de resumen.
 - Mantener `docs/README.md` solo como índice.
+
+---
+
+## 8) Runbook Operativo Corto (día a día)
+
+Usa este runbook como checklist rápido para operación diaria.
+
+### 8.1 Inicio de jornada
+
+1. Verificar estado Jenkins (jobs en verde, cola sin bloqueos).
+2. Verificar credenciales vigentes en Jenkins:
+    - `github-token`
+    - `jira-url`
+    - `jira-api-token`
+    - `teams-webhook`
+    - `teams-qa-webhook`
+3. Verificar conectividad AWS/Lambdas:
+    - `devops-platform-teams-notifier`
+    - `devops-platform-jira-event-handler`
+
+### 8.2 Si hay falla de pipeline
+
+1. Confirmar que se creó o reutilizó ticket Jira.
+2. Confirmar notificación Teams con:
+    - número de ticket
+    - resumen del ticket
+    - link de Jira
+3. Confirmar deduplicación:
+    - para mismo commit (`jenkins-failure-<hash>`) no debe abrir otro ticket.
+
+### 8.3 Si hay éxito después de una falla
+
+1. Confirmar notificación Teams de build exitoso con:
+    - `Resuelto por`
+    - `Tickets cerrados`
+2. Confirmar en Jira:
+    - comentario automático de resolución en el ticket
+    - transición a `Done` del ticket más reciente del branch
+
+### 8.4 Si hay cambio de infraestructura
+
+1. Ejecutar job de bootstrap infra con `APPLY_TERRAFORM=true`.
+2. Validar outputs Terraform y endpoints API Gateway.
+3. Ejecutar una corrida de validación (build controlado) para confirmar notificaciones.
+
+---
+
+## 9) Renombrado Seguro de los 3 Jobs Jenkins
+
+Objetivo: adoptar nombres descriptivos sin romper triggers ni flujo actual.
+
+Nombres objetivo:
+
+1. `01-app-repo-trigger`
+2. `02-platform-ci-qa-orchestrator`
+3. `03-platform-infra-bootstrap`
+
+### 9.1 Orden recomendado de cambio
+
+1. Renombrar `app-repo-trigger` -> `01-app-repo-trigger`.
+2. Actualizar configuración upstream/downstream para que dispare el nuevo nombre.
+3. Renombrar `app-pilot-ci` -> `02-platform-ci-qa-orchestrator`.
+4. Renombrar job de infraestructura a `03-platform-infra-bootstrap`.
+
+### 9.2 Checklist para no romper el flujo
+
+1. Revisar referencias de nombre de job en:
+    - configuraciones upstream/downstream
+    - notificaciones
+    - scripts externos (si existen)
+2. Ejecutar un build manual por job tras renombrar.
+3. Ejecutar un trigger real desde SCM para validar encadenamiento.
+4. Confirmar que el job 2 sigue obteniendo `jenkins/Jenkinsfile` desde `develop`.
+
+### 9.3 Criterio de aceptación del renombrado
+
+1. Un push al repo app dispara `01-app-repo-trigger`.
+2. `01-app-repo-trigger` dispara `02-platform-ci-qa-orchestrator`.
+3. El job 2 completa pipeline y notifica Teams.
+4. El job 3 se ejecuta solo cuando se solicita infraestructura.
+
+---
+
+## 10) Validación End-to-End (evidencias)
+
+Esta validación confirma el ciclo completo: falla controlada -> ticket Jira -> corrección -> cierre automático -> notificación final.
+
+### 10.1 Escenario A: falla controlada
+
+1. Introducir una falla temporal de pruebas en repo app.
+2. Hacer push a `develop`.
+3. Evidencias esperadas en logs Jenkins:
+    - `Pipeline FAILED - Error Handling`
+    - `Using Jira issue type: ...`
+    - `Jira ticket created: <KEY>` o `Reusing existing Jira ticket: <KEY>`
+    - `Failure notification sent to Teams`
+4. Evidencias esperadas en Teams:
+    - mensaje de build fallido
+    - ticket Jira visible con link
+
+### 10.2 Escenario B: corrección
+
+1. Quitar la falla temporal y hacer push.
+2. Evidencias esperadas en logs Jenkins:
+    - `Status: SUCCESS`
+    - `Resolving Jira ticket: <KEY>`
+    - `Ticket <KEY> transitioned to Done`
+    - `Success notification sent to Teams`
+3. Evidencias esperadas en Teams:
+    - build exitoso
+    - `Resuelto por: <usuario>`
+    - `Tickets cerrados: <KEY>`
+
+### 10.3 Verificación Jira posterior
+
+1. El ticket tiene comentario de resolución automática con build/commit/autor.
+2. El ticket quedó en categoría `Done`.
+3. Si vuelves a fallar con otro commit, se crea/reutiliza ticket correcto sin duplicados para el mismo hash.
