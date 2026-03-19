@@ -195,14 +195,15 @@ pipeline {
                             # If this run validates repo 2, enforce policy against app repo head commit.
                             if [ "${RUN_APP_REPO_TESTS}" = "true" ]; then
                                 rm -rf app-repo-policy-check
+                                NORMALIZED_APP_REPO_BRANCH=$(echo "${APP_REPO_BRANCH}" | sed 's#^\*/##; s#^origin/##')
                                 APP_REPO_AUTH_URL=$(echo "${APP_REPO_URL}" | sed "s#https://#https://${GH_TOKEN}@#")
-                                git clone --depth 1 --branch "${APP_REPO_BRANCH}" --single-branch "${APP_REPO_AUTH_URL}" app-repo-policy-check
+                                git clone --depth 1 --branch "${NORMALIZED_APP_REPO_BRANCH}" --single-branch "${APP_REPO_AUTH_URL}" app-repo-policy-check
 
                                 cd app-repo-policy-check
                                 VERIFY_COMMIT=$(git rev-parse HEAD)
                                 cd ..
 
-                                TARGET_BRANCH="${APP_REPO_BRANCH#origin/}"
+                                TARGET_BRANCH="${NORMALIZED_APP_REPO_BRANCH}"
                                 VERIFY_ORG=$(echo "${APP_REPO_URL}" | sed -E 's#https://github.com/([^/]+)/([^/.]+)(\\.git)?#\\1#')
                                 VERIFY_REPO=$(echo "${APP_REPO_URL}" | sed -E 's#https://github.com/([^/]+)/([^/.]+)(\\.git)?#\\2#')
                             fi
@@ -469,9 +470,10 @@ EOF
                             rm -rf app-repo
                             rm -f .app_repo_commit
                             rm -f .app_repo_author
+                            NORMALIZED_APP_REPO_BRANCH=$(echo "${APP_REPO_BRANCH}" | sed 's#^\*/##; s#^origin/##')
                             APP_REPO_AUTH_URL=$(echo "${APP_REPO_URL}" | sed "s#https://#https://${GH_TOKEN}@#")
 
-                            git clone --branch "${APP_REPO_BRANCH}" --single-branch "${APP_REPO_AUTH_URL}" app-repo
+                            git clone --branch "${NORMALIZED_APP_REPO_BRANCH}" --single-branch "${APP_REPO_AUTH_URL}" app-repo
 
                             cd app-repo
                             APP_REPO_COMMIT=$(git rev-parse --short=8 HEAD)
