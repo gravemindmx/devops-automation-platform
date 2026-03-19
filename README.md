@@ -4,7 +4,7 @@
 
 ---
 
-Este repositorio contiene la **infraestructura como código (IaC)** y los componentes de automatización para CI/CD, notificaciones y gestión de incidentes en AWS.
+Este repositorio contiene la **infraestructura como código (IaC)** y los componentes de automatización para CI/CD y notificaciones en AWS.
 
 ---
 
@@ -39,7 +39,6 @@ Teams ✅ Build OK + QA          Teams ❌ Falla + logs/build URL
 |---|---|
 | `infrastructure/terraform/` | IaC: red, Jenkins, Lambdas, API Gateway, IAM |
 | `services/teams-notifier/` | Lambda Python — notifica Teams en eventos CI/CD |
-| `services/jira-event-handler/` | Lambda Python — procesa webhooks Jira → Teams |
 | `jenkins/Jenkinsfile` | Pipeline completo: build, test, deploy QA, notificaciones |
 | `scripts/jenkins/` | Scripts de health-check e integraciones auxiliares |
 
@@ -52,7 +51,7 @@ cd infrastructure/terraform
 cp terraform.tfvars.example terraform.tfvars
 # Completar terraform.tfvars con valores reales
 terraform init && terraform plan -out=tfplan && terraform apply tfplan
-terraform output   # Copiar webhook_url y jira_webhook_url
+terraform output   # Copiar webhook_url
 ```
 
 Configuración completa: [docs/platform-guide.md](docs/platform-guide.md)
