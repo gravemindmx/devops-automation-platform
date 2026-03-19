@@ -590,14 +590,14 @@ Comportamiento implementado y validado:
 
 Plantilla recomendada para la accion `Post adaptive card` en Power Automate:
 
-- Archivo: `docs/power-automate-adaptive-card.json`
+- Archivo (estados no fallidos): `docs/power-automate-adaptive-card.json`
 - Archivo (solo notificaciones fallidas): `docs/power-automate-adaptive-card-failure.json`
 - Campos esperados desde `triggerBody()`: `title`, `status`, `message`, `build_number`, `branch`, `commit`, `environment`, `app_name`, `resolved_by`, `error`, `build_url`, `timestamp`.
 
 Notas:
 
-- El color del titulo se mapea por estado (`EN_PROCESO`, `FALLIDO`, `EFECTIVO`, `COMPLETADO`).
-- El bloque de error solo se muestra cuando el estado es `FALLIDO`.
+- La plantilla `power-automate-adaptive-card.json` cubre `EN_PROCESO`, `EFECTIVO` y `COMPLETADO`.
+- El estado `FALLIDO` se maneja en `power-automate-adaptive-card-failure.json`.
 - Si falta un campo, la tarjeta usa valores por defecto con `coalesce(...)`.
 - Para flujos que solo envian fallas, usa la plantilla `power-automate-adaptive-card-failure.json` (titulo y color en `Attention`).
 
