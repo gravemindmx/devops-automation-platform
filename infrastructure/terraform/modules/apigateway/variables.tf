@@ -3,18 +3,8 @@ variable "lambda_invoke_arn" {
   type        = string
 }
 
-variable "jira_lambda_invoke_arn" {
-  description = "Invoke ARN of the jira-event-handler Lambda (POST /jira)"
-  type        = string
-}
-
 variable "lambda_function_name" {
   description = "Function name of teams-notifier Lambda"
-  type        = string
-}
-
-variable "jira_lambda_function_name" {
-  description = "Function name of jira-event-handler Lambda"
   type        = string
 }
 

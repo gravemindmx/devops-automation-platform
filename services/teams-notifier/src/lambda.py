@@ -17,6 +17,7 @@ http = urllib3.PoolManager()
 
 # Environment variables
 TEAMS_WEBHOOK = os.environ.get('TEAMS_WEBHOOK')
+TEAMS_FAILURE_WEBHOOK = os.environ.get('TEAMS_FAILURE_WEBHOOK') or TEAMS_WEBHOOK
 
 # Logging
 logger = logging.getLogger()
@@ -65,6 +66,37 @@ def utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def parse_event_payload(event: Any) -> Dict[str, Any]:
+    """Parse Lambda event payload for direct invoke and API Gateway HTTP API v2."""
+    if event is None:
+        return {}
+
+    if isinstance(event, str):
+        return json.loads(event)
+
+    if not isinstance(event, dict):
+        return {}
+
+    # API Gateway HTTP API v2 payload: business payload comes in body.
+    if "version" in event and "requestContext" in event and "body" in event:
+        body = event.get("body")
+        if body is None:
+            return {}
+
+        if isinstance(body, dict):
+            payload = body
+        else:
+            payload = json.loads(body)
+
+        if event.get("isBase64Encoded"):
+            # Current integration sends JSON, so keep explicit failure for malformed data.
+            raise ValueError("Base64-encoded payload is not supported for notify endpoint")
+
+        return payload if isinstance(payload, dict) else {}
+
+    return event
+
+
 def lambda_handler(event, context):
     """
     Main Lambda handler for Teams notifications
@@ -73,11 +105,7 @@ def lambda_handler(event, context):
     try:
         logger.info(f"Received event: {json.dumps(event)}")
         
-        # Parse event
-        if isinstance(event, str):
-            payload = json.loads(event)
-        else:
-            payload = event
+        payload = parse_event_payload(event)
 
         payload.setdefault("status", STATUS_BY_EVENT.get(str(payload.get("event_type", "")).lower(), payload.get("status", "INFO")))
         payload.setdefault("title", build_notification_title(payload))
@@ -100,8 +128,6 @@ def lambda_handler(event, context):
             teams_message = format_deployment_success(payload)
         elif event_type == 'deployment_failure':
             teams_message = format_deployment_failure(payload)
-        elif event_type == 'jira_resolved':
-            teams_message = format_jira_resolved(payload)
         elif event_type == 'build_in_progress':
             teams_message = format_generic_message(payload)
         elif event_type in ('blue_green_completed', 'completado_blue_green'):
@@ -211,11 +237,7 @@ def format_build_failure(payload: Dict[str, Any]) -> Dict:
     branch = payload.get('branch', 'unknown')
     commit = payload.get('commit', 'N/A')
     error = payload.get('error', 'Unknown error')
-    jira_ticket = payload.get('jira_ticket', '')
-    jira_ticket_summary = payload.get('jira_ticket_summary', '')
-    jira_action = payload.get('jira_action', '')
     build_url = payload.get('build_url', '')
-    jira_url = payload.get('jira_url', '')
     
     facts = [
         {
@@ -240,22 +262,7 @@ def format_build_failure(payload: Dict[str, Any]) -> Dict:
         }
     ]
     
-    if jira_ticket:
-        facts.append({
-            "name": "Jira Ticket",
-            "value": jira_ticket
-        })
-    if jira_ticket_summary:
-        facts.append({
-            "name": "Ticket Summary",
-            "value": jira_ticket_summary
-        })
-    if jira_action:
-        facts.append({
-            "name": "Ticket Action",
-            "value": jira_action
-        })
-    
+
     message = {
         "@type": "MessageCard",
         "@context": "https://schema.org/extensions",
@@ -285,18 +292,7 @@ def format_build_failure(payload: Dict[str, Any]) -> Dict:
             ]
         })
     
-    if jira_ticket and jira_url:
-        message["potentialAction"].append({
-            "@type": "OpenUri",
-            "name": "View Jira Ticket",
-            "targets": [
-                {
-                    "os": "default",
-                    "uri": jira_url
-                }
-            ]
-        })
-    
+
     return message
 
 
@@ -377,64 +373,6 @@ def format_deployment_failure(payload: Dict[str, Any]) -> Dict:
             }
         ]
     }
-    
-    return message
-
-
-def format_jira_resolved(payload: Dict[str, Any]) -> Dict:
-    """Format Jira issue resolved notification"""
-    
-    ticket_id = payload.get('ticket_id', 'UNKNOWN')
-    summary = payload.get('summary', 'No title')
-    resolved_by = payload.get('resolved_by', 'Unknown')
-    time_to_resolve = payload.get('time_to_resolve', 'N/A')
-    jira_url = payload.get('jira_url', '')
-    
-    message = {
-        "@type": "MessageCard",
-        "@context": "https://schema.org/extensions",
-        "summary": f"✅ {ticket_id} - Resolved",
-        "themeColor": "28a745",
-        "title": "✅ Jira Issue Resolved",
-        "sections": [
-            {
-                "activityTitle": f"{ticket_id}: {summary}",
-                "activitySubtitle": "Status: RESOLVED ✅",
-                "facts": [
-                    {
-                        "name": "Ticket ID",
-                        "value": ticket_id
-                    },
-                    {
-                        "name": "Resolved by",
-                        "value": resolved_by
-                    },
-                    {
-                        "name": "Time to resolve",
-                        "value": time_to_resolve
-                    },
-                    {
-                        "name": "Resolved at",
-                        "value": utc_now_iso()
-                    }
-                ],
-                "markdown": True
-            }
-        ],
-        "potentialAction": []
-    }
-    
-    if jira_url:
-        message["potentialAction"].append({
-            "@type": "OpenUri",
-            "name": "View in Jira",
-            "targets": [
-                {
-                    "os": "default",
-                    "uri": f"{jira_url}/browse/{ticket_id}"
-                }
-            ]
-        })
     
     return message
 
@@ -534,15 +472,27 @@ def to_plain_text_message(payload: Dict[str, Any]) -> Dict[str, str]:
     return {"text": text}
 
 
+def _target_webhook(payload: Dict[str, Any]) -> str:
+    status = str(payload.get("status", "")).upper().strip()
+    event_type = str(payload.get("event_type", "")).lower().strip()
+
+    if status == "FALLIDO" or event_type in {"build_failure", "deployment_failure"}:
+        return TEAMS_FAILURE_WEBHOOK
+
+    return TEAMS_WEBHOOK
+
+
 def send_teams_notification(payload: Dict) -> bool:
     """Send notification to Microsoft Teams"""
     
     try:
-        if not TEAMS_WEBHOOK:
-            logger.error("TEAMS_WEBHOOK not configured")
+        webhook_url = _target_webhook(payload)
+
+        if not webhook_url:
+            logger.error("No Teams webhook configured for payload status/event")
             return False
 
-        parsed = urlparse(TEAMS_WEBHOOK)
+        parsed = urlparse(webhook_url)
         logger.info(
             "Sending Teams notification to host=%s path=%s",
             parsed.netloc,
@@ -552,7 +502,7 @@ def send_teams_notification(payload: Dict) -> bool:
         
         response = http.request(
             'POST',
-            TEAMS_WEBHOOK,
+            webhook_url,
             body=json.dumps(payload),
             headers={'Content-Type': 'application/json'},
             timeout=urllib3.Timeout(connect=5.0, read=10.0)
@@ -571,7 +521,7 @@ def send_teams_notification(payload: Dict) -> bool:
                 logger.info("Retrying Teams notification using plain text payload format")
                 fallback_response = http.request(
                     'POST',
-                    TEAMS_WEBHOOK,
+                    webhook_url,
                     body=json.dumps(fallback_payload),
                     headers={'Content-Type': 'application/json'},
                     timeout=urllib3.Timeout(connect=5.0, read=10.0)

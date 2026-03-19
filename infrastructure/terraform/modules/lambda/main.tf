@@ -13,7 +13,8 @@ resource "aws_lambda_function" "teams_notifier_function" {
 
   environment {
     variables = {
-      TEAMS_WEBHOOK = var.teams_webhook_url
+      TEAMS_WEBHOOK         = var.teams_webhook_url
+      TEAMS_FAILURE_WEBHOOK = var.teams_failure_webhook_url
     }
   }
 

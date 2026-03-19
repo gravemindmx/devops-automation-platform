@@ -2,11 +2,6 @@ output "webhook_url" {
   value = module.api.api_endpoint
 }
 
-output "jira_webhook_url" {
-  description = "Endpoint to configure in Jira webhooks (POST /jira)"
-  value       = module.api.jira_webhook_url
-}
-
 # =========================================
 # Network Module Outputs
 # =========================================
@@ -83,20 +78,6 @@ output "jenkins_security_group_id" {
 output "alb_security_group_id" {
   description = "ID of ALB external security group"
   value       = module.jenkins.alb_security_group_id
-}
-
-# =========================================
-# Jira Handler Module Outputs
-# =========================================
-
-output "jira_handler_function_name" {
-  description = "Name of Jira event handler Lambda function"
-  value       = module.jira_handler.jira_handler_function_name
-}
-
-output "jira_handler_arn" {
-  description = "ARN of Jira event handler Lambda function"
-  value       = module.jira_handler.jira_handler_arn
 }
 
 # =========================================

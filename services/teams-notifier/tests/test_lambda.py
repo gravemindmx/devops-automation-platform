@@ -108,3 +108,42 @@ def test_lambda_handler_sets_default_title_and_status_for_completed_blue_green()
     sent_payload = mocked_send.call_args[0][0]
     assert sent_payload["status"] == "COMPLETADO"
     assert sent_payload["title"] == "mi-app | QA | COMPLETADO (BLUE/GREEN)"
+
+
+def test_lambda_handler_parses_http_api_v2_event_body():
+    event = {
+        "version": "2.0",
+        "requestContext": {"http": {"method": "POST", "path": "/notify"}},
+        "isBase64Encoded": False,
+        "body": "{\"event_type\":\"build_in_progress\",\"app_name\":\"mi-app\",\"environment\":\"qa\"}",
+    }
+
+    with patch.object(teams_lambda, "send_teams_notification", return_value=True) as mocked_send:
+        response = teams_lambda.lambda_handler(event, None)
+
+    assert response["statusCode"] == 200
+    sent_payload = mocked_send.call_args[0][0]
+    assert sent_payload["event_type"] == "build_in_progress"
+    assert sent_payload["status"] == "EN_PROCESO"
+
+
+def test_send_teams_notification_uses_failure_webhook_for_failed_status():
+    with patch.object(
+        teams_lambda.http,
+        "request",
+        return_value=SimpleNamespace(status=200, data=b""),
+    ) as mocked_http:
+        with patch.object(
+            teams_lambda,
+            "TEAMS_WEBHOOK",
+            "https://example.powerplatform.com/general-flow",
+        ):
+            with patch.object(
+                teams_lambda,
+                "TEAMS_FAILURE_WEBHOOK",
+                "https://example.powerplatform.com/failure-flow",
+            ):
+                result = teams_lambda.send_teams_notification({"status": "FALLIDO"})
+
+    assert result is True
+    assert mocked_http.call_args.args[1] == "https://example.powerplatform.com/failure-flow"

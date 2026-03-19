@@ -3,11 +3,6 @@ output "api_endpoint" {
   value       = "${aws_apigatewayv2_api.webhook_api.api_endpoint}/notify"
 }
 
-output "jira_webhook_url" {
-  description = "API Gateway endpoint for Jira webhooks"
-  value       = "${aws_apigatewayv2_api.webhook_api.api_endpoint}/jira"
-}
-
 output "api_id" {
   description = "API Gateway API ID"
   value       = aws_apigatewayv2_api.webhook_api.id

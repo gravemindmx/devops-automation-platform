@@ -9,7 +9,6 @@
  * 3. Deploy to QA
  * 4. Validation
  * 5. Notification (Success/Failure) -> Teams
- * 6. On Failure: Auto-create Jira ticket
  *
  * Triggers: Webhook from GitHub on commits/PR merges to qa o prod
  */
@@ -42,11 +41,6 @@ pipeline {
             name: 'TERRAFORM_AUTO_APPROVE',
             defaultValue: 'true',
             description: 'Use true to auto-approve terraform apply'
-        )
-        string(
-            name: 'JIRA_USER_EMAIL',
-            defaultValue: 'infraestructura@imony.mx',
-            description: 'Optional Jira user email. If provided, Jira ticket creation uses Basic auth (email + token).'
         )
         booleanParam(
             name: 'RUN_APP_REPO_TESTS',
@@ -92,19 +86,11 @@ pipeline {
         AWS_REGION = 'us-east-1'
         LAMBDA_FUNCTION = 'devops-platform-teams-notifier'
         QA_LAMBDA_FUNCTION = 'devops-platform-teams-notifier'
-        JIRA_HANDLER_FUNCTION = 'devops-platform-jira-event-handler'
-        QA_JIRA_HANDLER_FUNCTION = 'devops-platform-jira-event-handler'
-
-        // Jira
-        JIRA_URL = credentials('jira-url')
-        JIRA_API_TOKEN = credentials('jira-api-token')
-        JIRA_DEFAULT_USER_EMAIL = 'infraestructura@imony.mx'
-        JIRA_PROJECT_KEY = 'NFRTST'
         INFRA_READY = 'true'
 
         // Teams
         TEAMS_WEBHOOK = credentials('teams-webhook')
-        TEAMS_QA_WEBHOOK = credentials('teams-qa-webhook')
+        TEAMS_FAILURE_WEBHOOK = credentials('teams-failure-webhook')
 
         // Build info
         COMMIT_HASH = "${GIT_COMMIT.take(8)}"
@@ -278,33 +264,23 @@ except Exception:
 
                     withCredentials([
                         string(credentialsId: 'github-token', variable: 'TF_VAR_github_token'),
-                        string(credentialsId: 'jira-url', variable: 'TF_VAR_jira_url'),
-                        string(credentialsId: 'jira-api-token', variable: 'TF_VAR_jira_api_token'),
                         string(credentialsId: 'teams-webhook', variable: 'TF_VAR_teams_webhook_url'),
-                        string(credentialsId: 'teams-qa-webhook', variable: 'TF_VAR_teams_qa_webhook_url')
+                        string(credentialsId: 'teams-failure-webhook', variable: 'TF_VAR_teams_failure_webhook_url')
                     ]) {
                         sh '''
                             set +x
 
                             echo "Preparing Lambda ZIP artifacts for Terraform..."
-                            rm -rf services/teams-notifier/package services/jira-event-handler/package
-                            rm -f services/teams-notifier/teams-notifier.zip services/jira-event-handler/jira-handler.zip
+                            rm -rf services/teams-notifier/package
+                            rm -f services/teams-notifier/teams-notifier.zip
 
                             "${PYTHON_BIN}" -m pip install -r services/teams-notifier/config/requirements.txt \
                                 -t services/teams-notifier/package/ --quiet
-                            "${PYTHON_BIN}" -m pip install -r services/jira-event-handler/config/requirements.txt \
-                                -t services/jira-event-handler/package/ --quiet
 
                             cp -r services/teams-notifier/src/. services/teams-notifier/package/
                             (
                                 cd services/teams-notifier/package && \
                                 zip -r ../teams-notifier.zip . -x "*.pyc" "*/__pycache__/*" > /dev/null 2>&1
-                            )
-
-                            cp -r services/jira-event-handler/src/. services/jira-event-handler/package/
-                            (
-                                cd services/jira-event-handler/package && \
-                                zip -r ../jira-handler.zip . -x "*.pyc" "*/__pycache__/*" > /dev/null 2>&1
                             )
 
                             cd infrastructure/terraform
@@ -409,27 +385,17 @@ EOF
                         echo "═══════════════════════════════════════"
 
                         sh '''
-                            rm -rf services/teams-notifier/package services/jira-event-handler/package
+                            rm -rf services/teams-notifier/package
 
                             echo "Installing deps for teams-notifier..."
                             "${PYTHON_BIN}" -m pip install -r services/teams-notifier/config/requirements.txt \
                                 -t services/teams-notifier/package/ --quiet
-
-                            echo "Installing deps for jira-event-handler..."
-                            "${PYTHON_BIN}" -m pip install -r services/jira-event-handler/config/requirements.txt \
-                                -t services/jira-event-handler/package/ --quiet
 
                             echo "Creating deployment packages..."
                             cp -r services/teams-notifier/src/. services/teams-notifier/package/
                             (
                                 cd services/teams-notifier/package && \
                                 zip -r ../teams-notifier.zip . -x "*.pyc" "*/__pycache__/*" > /dev/null 2>&1
-                            )
-
-                            cp -r services/jira-event-handler/src/. services/jira-event-handler/package/
-                            (
-                                cd services/jira-event-handler/package && \
-                                zip -r ../jira-handler.zip . -x "*.pyc" "*/__pycache__/*" > /dev/null 2>&1
                             )
 
                             echo "Build successful ✓"
@@ -453,14 +419,10 @@ EOF
                             # Install runtime deps for tests in Jenkins interpreter (not only package/ folder).
                             "${PYTHON_BIN}" -m pip install --quiet \
                                 -r services/teams-notifier/config/requirements.txt \
-                                -r services/jira-event-handler/config/requirements.txt \
                                 pytest pytest-cov
 
                             echo "Running tests for teams-notifier..."
                             "${PYTHON_BIN}" -m pytest services/teams-notifier/tests/ -v --tb=short
-
-                            echo "Running tests for jira-event-handler..."
-                            "${PYTHON_BIN}" -m pytest services/jira-event-handler/tests/ -v --tb=short
 
                             echo "Tests completed ✓"
                         '''
@@ -563,13 +525,7 @@ EOF
                                 >/dev/null 2>&1
                             LAMBDA_STATUS=$?
 
-                            aws lambda get-function \
-                                --function-name "${QA_JIRA_HANDLER_FUNCTION}" \
-                                --region "${AWS_REGION}" \
-                                >/dev/null 2>&1
-                            JIRA_HANDLER_STATUS=$?
-
-                            if [ "$LAMBDA_STATUS" -eq 0 ] && [ "$JIRA_HANDLER_STATUS" -eq 0 ]; then
+                            if [ "$LAMBDA_STATUS" -eq 0 ]; then
                                 exit 0
                             fi
 
@@ -617,41 +573,20 @@ EOF
                                 --function-name "${QA_LAMBDA_FUNCTION}" \
                                 --region "${AWS_REGION}"
 
-                            # Deploy jira-event-handler
-                            echo "Deploying jira-event-handler to QA..."
-                            aws lambda update-function-code \
-                                --function-name "${QA_JIRA_HANDLER_FUNCTION}" \
-                                --zip-file fileb://services/jira-event-handler/jira-handler.zip \
-                                --region "${AWS_REGION}"
-
-                            aws lambda wait function-updated \
-                                --function-name "${QA_JIRA_HANDLER_FUNCTION}" \
-                                --region "${AWS_REGION}"
-
-                            # Sync webhook/Jira environment variables from Jenkins credentials.
+                            # Sync webhook environment variables from Jenkins credentials.
                             echo "Updating teams-notifier environment variables..."
                             aws lambda update-function-configuration \
                                 --function-name "${QA_LAMBDA_FUNCTION}" \
-                                --environment "Variables={TEAMS_WEBHOOK=${TEAMS_WEBHOOK}}" \
+                                --environment "Variables={TEAMS_WEBHOOK=${TEAMS_WEBHOOK},TEAMS_FAILURE_WEBHOOK=${TEAMS_FAILURE_WEBHOOK}}" \
                                 --region "${AWS_REGION}"
 
                             aws lambda wait function-updated \
                                 --function-name "${QA_LAMBDA_FUNCTION}" \
-                                --region "${AWS_REGION}"
-
-                            echo "Updating jira-event-handler environment variables..."
-                            aws lambda update-function-configuration \
-                                --function-name "${QA_JIRA_HANDLER_FUNCTION}" \
-                                --environment "Variables={TEAMS_WEBHOOK=${TEAMS_QA_WEBHOOK},JIRA_URL=${JIRA_URL}}" \
                                 --region "${AWS_REGION}"
 
                             echo "Waiting for Lambdas to be ready..."
                             aws lambda wait function-updated \
                                 --function-name "${QA_LAMBDA_FUNCTION}" \
-                                --region "${AWS_REGION}"
-
-                            aws lambda wait function-updated \
-                                --function-name "${QA_JIRA_HANDLER_FUNCTION}" \
                                 --region "${AWS_REGION}"
 
                             echo "Deployment to QA completed ✓"

@@ -167,13 +167,13 @@ Checklist rápido por ruta:
 Ruta Local:
 
 1. Completar `terraform.tfvars` solo con valores no sensibles.
-2. Exportar `TF_VAR_github_token`, `TF_VAR_teams_webhook_url`, `TF_VAR_teams_qa_webhook_url`.
+2. Exportar `TF_VAR_github_token`, `TF_VAR_teams_webhook_url`, `TF_VAR_teams_failure_webhook_url`.
 3. Ejecutar `terraform init/plan/apply` desde `infrastructure/terraform`.
 
 Ruta Jenkins:
 
 1. Completar `terraform.tfvars` (no sensible) en el repositorio.
-2. Cargar secrets en Jenkins Credentials (`github-token`, `teams-webhook`, `teams-qa-webhook`).
+2. Cargar secrets en Jenkins Credentials (`github-token`, `teams-webhook`, `teams-failure-webhook`).
 3. Ejecutar pipeline con `APPLY_TERRAFORM=true`.
 
 ### 3.3 Variables: qué se configura y dónde
@@ -191,7 +191,7 @@ No todos los valores se configuran en el mismo lugar.
 | `qa_environment_url` | Opcional | `terraform.tfvars` | `https://qa-api.example.com` |
 | `github_token` | Sí | `TF_VAR_github_token` o Jenkins cred `github-token` | token |
 | `teams_webhook_url` | Sí | `TF_VAR_teams_webhook_url` o Jenkins cred `teams-webhook` | URL webhook |
-| `teams_qa_webhook_url` | Sí | `TF_VAR_teams_qa_webhook_url` o Jenkins cred `teams-qa-webhook` | URL webhook |
+| `teams_failure_webhook_url` | Sí | `TF_VAR_teams_failure_webhook_url` o Jenkins cred `teams-failure-webhook` | URL webhook |
 
 Regla: secretos en variables de entorno/Jenkins, no en archivos versionados.
 
@@ -213,7 +213,7 @@ GitHub:
 Teams:
 
 - `teams_webhook_url` (secreto): en el canal principal, crear Incoming Webhook y copiar URL.
-- `teams_qa_webhook_url` (secreto): en canal QA, crear Incoming Webhook y copiar URL.
+- `teams_failure_webhook_url` (secreto): en canal QA, crear Incoming Webhook y copiar URL.
 
 ### 3.3.2 Dónde configurar cada cosa (resumen operativo)
 
@@ -231,13 +231,13 @@ En variables de entorno local (`TF_VAR_*`):
 
 - `TF_VAR_github_token`
 - `TF_VAR_teams_webhook_url`
-- `TF_VAR_teams_qa_webhook_url`
+- `TF_VAR_teams_failure_webhook_url`
 
 En Jenkins Credentials:
 
 - `github-token`
 - `teams-webhook`
-- `teams-qa-webhook`
+- `teams-failure-webhook`
 
 ### 3.3.3 Variables del runtime del pipeline (Jenkinsfile)
 
@@ -246,7 +246,7 @@ Estas variables no van en `terraform.tfvars`; viven en Jenkins (credenciales, pa
 | Variable | Fuente | Dónde se define | Valor recomendado |
 |---|---|---|---|
 | `TEAMS_WEBHOOK` | Credencial Jenkins | `teams-webhook` | Webhook Teams canal principal |
-| `TEAMS_QA_WEBHOOK` | Credencial Jenkins | `teams-qa-webhook` | Webhook Teams canal QA |
+| `TEAMS_FAILURE_WEBHOOK` | Credencial Jenkins | `teams-failure-webhook` | Webhook Teams notificaciones fallidas |
 | `LAMBDA_FUNCTION` | Jenkinsfile (`environment`) | `jenkins/Jenkinsfile` | `devops-platform-teams-notifier` |
 | `AWS_REGION` | Jenkinsfile (`environment`) | `jenkins/Jenkinsfile` | `us-east-1` |
 | `APP_REPO_URL` | Parámetro Jenkins | parámetro de job | URL del repo app (repo 2) |
@@ -272,7 +272,7 @@ PowerShell (Windows):
 ```powershell
 $env:TF_VAR_github_token = "<github_pat>"
 $env:TF_VAR_teams_webhook_url = "<teams_webhook_general>"
-$env:TF_VAR_teams_qa_webhook_url = "<teams_webhook_qa>"
+$env:TF_VAR_teams_failure_webhook_url = "<teams_webhook_failure>"
 ```
 
 Bash (Linux/macOS):
@@ -280,7 +280,7 @@ Bash (Linux/macOS):
 ```bash
 export TF_VAR_github_token="<github_pat>"
 export TF_VAR_teams_webhook_url="<teams_webhook_general>"
-export TF_VAR_teams_qa_webhook_url="<teams_webhook_qa>"
+export TF_VAR_teams_failure_webhook_url="<teams_webhook_failure>"
 ```
 
 ### 3.6 Desplegar infraestructura con Terraform (Solo Local)
@@ -316,7 +316,7 @@ En **Manage Jenkins → Credentials**, crear:
 |---|---|---|
 | `github-token` | Secret text | GitHub PAT con scope `repo` |
 | `teams-webhook` | Secret text | Webhook Teams canal principal |
-| `teams-qa-webhook` | Secret text | Webhook Teams canal QA |
+| `teams-failure-webhook` | Secret text | Webhook Teams notificaciones fallidas |
 
 Tipo exacto recomendado en Jenkins (para este Jenkinsfile):
 
@@ -324,7 +324,7 @@ Tipo exacto recomendado en Jenkins (para este Jenkinsfile):
 - Dominio: `Global credentials (unrestricted)`.
 - `github-token`: `Secret text`.
 - `teams-webhook`: `Secret text`.
-- `teams-qa-webhook`: `Secret text`.
+- `teams-failure-webhook`: `Secret text`.
 
 Campos exactos al crear cada credencial `Secret text`:
 
@@ -353,7 +353,7 @@ Plantilla por credencial (copiar y crear una por una):
     - `Kind`: `Secret text`
     - `Scope`: `Global`
     - `Secret`: URL del Incoming Webhook del canal QA
-    - `ID`: `teams-qa-webhook`
+    - `ID`: `teams-failure-webhook`
     - `Description`: `Teams webhook for QA notifications`
 
 Validación rápida (obligatoria):
@@ -364,7 +364,7 @@ Validación rápida (obligatoria):
 Uso en pipeline:
 
 - `github-token`: operaciones de autenticación Git HTTPS.
-- `teams-webhook` + `teams-qa-webhook`: notificaciones de build/despliegue.
+- `teams-webhook` + `teams-failure-webhook`: notificaciones de build/despliegue.
 
 Luego crear el job Pipeline:
 
@@ -677,7 +677,7 @@ Usa este runbook como checklist rápido para operación diaria.
 2. Verificar credenciales vigentes en Jenkins:
     - `github-token`
     - `teams-webhook`
-    - `teams-qa-webhook`
+    - `teams-failure-webhook`
 3. Verificar conectividad AWS/Lambdas:
     - `devops-platform-teams-notifier`
 

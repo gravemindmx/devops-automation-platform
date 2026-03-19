@@ -12,32 +12,20 @@ module "network" {
 module "lambda" {
   source = "./modules/lambda"
 
-  teams_webhook_url = var.teams_webhook_url
-  lambda_zip_path   = "${path.root}/../../services/teams-notifier/teams-notifier.zip"
-  project_name      = var.project_name
-  common_tags       = var.common_tags
+  teams_webhook_url         = var.teams_webhook_url
+  teams_failure_webhook_url = var.teams_failure_webhook_url
+  lambda_zip_path           = "${path.root}/../../services/teams-notifier/teams-notifier.zip"
+  project_name              = var.project_name
+  common_tags               = var.common_tags
 }
 
 module "api" {
   source = "./modules/apigateway"
 
-  lambda_invoke_arn      = module.lambda.invoke_arn
-  lambda_function_name   = module.lambda.function_name
-  jira_lambda_invoke_arn = module.jira_handler.jira_handler_invoke_arn
-  jira_lambda_function_name = module.jira_handler.jira_handler_function_name
-  project_name           = var.project_name
-  common_tags            = var.common_tags
-}
-
-module "jira_handler" {
-  source = "./modules/jira-handler"
-
-  jira_url          = var.jira_url
-  jira_api_token    = var.jira_api_token
-  teams_webhook_url = var.teams_qa_webhook_url
-  lambda_zip_path   = "${path.root}/../../services/jira-event-handler/jira-handler.zip"
-  project_name      = var.project_name
-  common_tags       = var.common_tags
+  lambda_invoke_arn    = module.lambda.invoke_arn
+  lambda_function_name = module.lambda.function_name
+  project_name         = var.project_name
+  common_tags          = var.common_tags
 }
 
 module "jenkins" {

@@ -92,33 +92,6 @@ variable "jenkins_admin_user" {
 }
 
 # =========================================
-# Jira Configuration
-# =========================================
-
-variable "jira_url" {
-  description = "Jira URL"
-  type        = string
-}
-
-variable "jira_api_token" {
-  description = "Jira API token"
-  type        = string
-  sensitive   = true
-}
-
-variable "jira_project_key" {
-  description = "Jira project key"
-  type        = string
-  default     = "DEVOPS"
-}
-
-variable "jira_assignee_user" {
-  description = "Default Jira assignee"
-  type        = string
-  default     = "qa-team"
-}
-
-# =========================================
 # Teams Webhooks
 # =========================================
 
@@ -128,8 +101,8 @@ variable "teams_webhook_url" {
   sensitive   = true
 }
 
-variable "teams_qa_webhook_url" {
-  description = "Teams webhook URL (QA channel)"
+variable "teams_failure_webhook_url" {
+  description = "Teams webhook URL for failed notifications"
   type        = string
   sensitive   = true
 }

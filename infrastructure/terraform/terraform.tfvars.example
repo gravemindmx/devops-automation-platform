@@ -19,11 +19,6 @@ private_subnet_id   = "subnet-0466d9078c5271b99"  # Jenkins subnet (private, exi
 github_org   = "your-organization"                   # Tu organización GitHub
 github_repo  = "devops-automation-platform"          # Tu repositorio GitHub
 
-# ===== Jira Configuration (REQUIRED - REEMPLAZA) =====
-jira_url         = "https://your-company.atlassian.net"  # Tu URL Jira
-jira_project_key = "DEVOPS"                              # Tu project key en Jira
-jira_assignee_user = "qa-team"                           # Usuario o equipo asignado
-
 # ===== Teams Configuration (REQUIRED - REEMPLAZA) =====
 # IMPORTANTE:
 # - NO pongas valores reales aqui para evitar exponer secretos en Git.
@@ -31,15 +26,15 @@ jira_assignee_user = "qa-team"                           # Usuario o equipo asig
 #
 # Mapeo:
 #   TF_VAR_teams_webhook_url    -> variable "teams_webhook_url"
-#   TF_VAR_teams_qa_webhook_url -> variable "teams_qa_webhook_url"
+#   TF_VAR_teams_failure_webhook_url -> variable "teams_failure_webhook_url"
 #
 # Ejemplo PowerShell (Windows):
 #   $env:TF_VAR_teams_webhook_url = "https://outlook.webhook.office.com/webhookb2/..."
-#   $env:TF_VAR_teams_qa_webhook_url = "https://outlook.webhook.office.com/webhookb2/..."
+#   $env:TF_VAR_teams_failure_webhook_url = "https://defaultbd6d8350d1ca40d59319c95f890af3.53.environment.api.powerplatform.com/..."
 #
 # Ejemplo Bash (Linux/macOS):
 #   export TF_VAR_teams_webhook_url="https://outlook.webhook.office.com/webhookb2/..."
-#   export TF_VAR_teams_qa_webhook_url="https://outlook.webhook.office.com/webhookb2/..."
+#   export TF_VAR_teams_failure_webhook_url="https://defaultbd6d8350d1ca40d59319c95f890af3.53.environment.api.powerplatform.com/..."
 
 # ===== QA Environment =====
 qa_environment_url = "https://qa-api.example.com"
@@ -47,6 +42,5 @@ qa_environment_url = "https://qa-api.example.com"
 # ===== Secretos (NO versionar) =====
 # Exportar en tu shell antes de terraform plan/apply:
 #   TF_VAR_github_token
-#   TF_VAR_jira_api_token
 #   TF_VAR_teams_webhook_url
-#   TF_VAR_teams_qa_webhook_url
+#   TF_VAR_teams_failure_webhook_url

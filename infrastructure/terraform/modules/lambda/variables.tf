@@ -4,6 +4,12 @@ variable "teams_webhook_url" {
   sensitive   = true
 }
 
+variable "teams_failure_webhook_url" {
+  description = "Teams Webhook URL for failure notifications"
+  type        = string
+  sensitive   = true
+}
+
 variable "lambda_zip_path" {
   description = "Path to Lambda function zip file"
   type        = string
