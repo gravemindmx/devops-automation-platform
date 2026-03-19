@@ -11,7 +11,7 @@
  * 5. Notification (Success/Failure) -> Teams
  * 6. On Failure: Auto-create Jira ticket
  *
- * Triggers: Webhook from GitHub on commits/PR merges to qa/prod
+ * Triggers: Webhook from GitHub on commits/PR merges to qa o prod
  */
 
 pipeline {
@@ -66,7 +66,7 @@ pipeline {
     }
 
     triggers {
-        // Triggered automatically by GitHub webhook on commits/PR merges to qa/prod
+        // Triggered automatically by GitHub webhook on commits/PR merges to qa o prod
         githubPush()
     }
 
@@ -216,7 +216,7 @@ pipeline {
                             echo "Commit: ${VERIFY_COMMIT}"
 
                             if [ "${TARGET_BRANCH}" != "qa" ] && [ "${TARGET_BRANCH}" != "prod" ]; then
-                                echo "❌ Policy violation: promotion only allowed from qa/prod branches."
+                                echo "❌ Policy violation: promotion only allowed from qa or prod branches."
                                 echo "Current target branch: ${TARGET_BRANCH}"
                                 rm -rf app-repo-policy-check || true
                                 exit 1
@@ -256,7 +256,7 @@ except Exception:
                                 echo "✓ PR merge policy validated for commit ${VERIFY_COMMIT} on ${TARGET_BRANCH}."
                             else
                                 echo "ℹ No merged PR associated for commit ${VERIFY_COMMIT} on ${TARGET_BRANCH}."
-                                echo "Proceeding because direct commits to qa/prod are allowed by current flow."
+                                echo "Proceeding because direct commits to qa or prod are allowed by current flow."
                             fi
 
                             rm -rf app-repo-policy-check || true

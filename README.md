@@ -15,7 +15,7 @@ terraform apply
        ↓
 AWS Lambda + API Gateway + IAM + Jenkins ALB
        ↓
-Developer trabaja → Commit o Pull Request hacia qa/prod
+Developer trabaja → Commit o Pull Request hacia qa o prod
        ↓
 GitHub Webhook → Jenkins Pipeline  (automático)
        ↓

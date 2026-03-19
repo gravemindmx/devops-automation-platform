@@ -36,7 +36,7 @@ Guía única para entender, configurar, desplegar y operar la plataforma.
 └─────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
-│  2. CI/CD AUTOMÁTICO (disparado por webhook en qa/prod)         │
+│  2. CI/CD AUTOMÁTICO (disparado por webhook en qa o prod)       │
 │                                                                 │
 │  GitHub Webhook  →  Jenkins (githubPush trigger)                │
 │       ↓                                                         │
@@ -582,11 +582,11 @@ En GitHub → repo de app → Settings → Webhooks → Add webhook:
 
 ```
 Repo 1 (devops-automation-platform)
-    commit o PR merge a qa/prod  →  Job: devops-platform-deploy
+    commit o PR merge a qa o prod  →  Job: devops-platform-deploy
                    →  Despliega Lambdas en AWS
 
 Repo 2 (tu app)
-    commit o PR merge a qa/prod  →  Job: app-piloto-ci
+    commit o PR merge a qa o prod  →  Job: app-piloto-ci
                    →  Build + Test de la app
                         │
                     Éxito → Lambda teams-notifier → Teams ✅
@@ -622,7 +622,7 @@ Recomendación de operación:
 
 ## 4) Uso del Pipeline
 
-### Disparo automático (qa/prod)
+### Disparo automático (qa o prod)
 
 Cada commit o PR merge en `qa` o `prod` dispara el pipeline automáticamente vía webhook de GitHub.
 
