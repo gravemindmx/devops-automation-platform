@@ -37,6 +37,16 @@ pipeline {
             defaultValue: false,
             description: 'Run terraform plan/apply before build stages'
         )
+        booleanParam(
+            name: 'ALLOW_NON_PROMOTION_BRANCH',
+            defaultValue: false,
+            description: 'Allow pipeline execution for a specific non qa/prod branch (testing only)'
+        )
+        string(
+            name: 'TEST_BRANCH_NAME',
+            defaultValue: '',
+            description: 'Exact branch name allowed when ALLOW_NON_PROMOTION_BRANCH=true'
+        )
         string(
             name: 'TERRAFORM_AUTO_APPROVE',
             defaultValue: 'true',
@@ -201,11 +211,18 @@ pipeline {
                             echo "Target branch: ${TARGET_BRANCH}"
                             echo "Commit: ${VERIFY_COMMIT}"
 
+                            ALLOW_NON_PROMOTION="${ALLOW_NON_PROMOTION_BRANCH}"
+                            TEST_BRANCH_ALLOWED="${TEST_BRANCH_NAME}"
+
                             if [ "${TARGET_BRANCH}" != "qa" ] && [ "${TARGET_BRANCH}" != "prod" ]; then
+                                if [ "${ALLOW_NON_PROMOTION}" = "true" ] && [ -n "${TEST_BRANCH_ALLOWED}" ] && [ "${TARGET_BRANCH}" = "${TEST_BRANCH_ALLOWED}" ]; then
+                                    echo "⚠ Running in testing mode for non-promotion branch: ${TARGET_BRANCH}"
+                                else
                                 echo "❌ Policy violation: promotion only allowed from qa or prod branches."
                                 echo "Current target branch: ${TARGET_BRANCH}"
                                 rm -rf app-repo-policy-check || true
                                 exit 1
+                                fi
                             fi
 
                             if [ -z "${VERIFY_ORG}" ] || [ -z "${VERIFY_REPO}" ] || [ -z "${VERIFY_COMMIT}" ]; then
