@@ -79,3 +79,32 @@ def test_send_teams_notification_accepts_202_status():
             result = teams_lambda.send_teams_notification({"text": "ok"})
 
     assert result is True
+
+
+def test_build_notification_title_uses_app_and_environment():
+    payload = {
+        "event_type": "build_in_progress",
+        "app_name": "mi-api",
+        "environment": "prod",
+    }
+
+    title = teams_lambda.build_notification_title(payload)
+
+    assert title == "mi-api | PROD | EN PROCESO"
+
+
+def test_lambda_handler_sets_default_title_and_status_for_completed_blue_green():
+    event = {
+        "event_type": "completado_blue_green",
+        "repository": "https://github.com/iMony-Tech/mi-app.git",
+        "environment": "qa",
+        "build_number": "321",
+    }
+
+    with patch.object(teams_lambda, "send_teams_notification", return_value=True) as mocked_send:
+        response = teams_lambda.lambda_handler(event, None)
+
+    assert response["statusCode"] == 200
+    sent_payload = mocked_send.call_args[0][0]
+    assert sent_payload["status"] == "COMPLETADO"
+    assert sent_payload["title"] == "mi-app | QA | COMPLETADO (BLUE/GREEN)"

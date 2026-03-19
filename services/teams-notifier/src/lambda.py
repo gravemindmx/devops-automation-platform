@@ -1,13 +1,7 @@
 """
-Teams Notifier Lambda Function
+Teams Notifier Lambda Function.
 
-Sends notifications to Microsoft Teams for various DevOps events:
-- Build success/failure
-- Deployment events
-- Jira ticket updates
-- Pipeline status changes
-
-Triggered by: Jenkins, API Gateway, other services
+Sends notifications to Microsoft Teams for DevOps pipeline events.
 """
 
 import json
@@ -29,6 +23,44 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 
+STATUS_BY_EVENT = {
+    "build_in_progress": "EN_PROCESO",
+    "build_failure": "FALLIDO",
+    "deployment_failure": "FALLIDO",
+    "build_success": "EFECTIVO",
+    "deployment_success": "EFECTIVO",
+    "blue_green_completed": "COMPLETADO",
+    "completado_blue_green": "COMPLETADO",
+}
+
+
+def _repo_name(repository: str) -> str:
+    if not repository:
+        return "Aplicacion"
+    repo = repository.rsplit("/", 1)[-1]
+    if repo.endswith(".git"):
+        repo = repo[:-4]
+    return repo or "Aplicacion"
+
+
+def build_notification_title(payload: Dict[str, Any]) -> str:
+    app_name = str(payload.get("app_name") or _repo_name(str(payload.get("repository", ""))))
+    environment = str(payload.get("environment") or "qa").upper()
+    status = str(payload.get("status") or "").strip().upper()
+
+    if not status:
+        status = STATUS_BY_EVENT.get(str(payload.get("event_type", "")).lower(), "INFO")
+
+    status_text = {
+        "EN_PROCESO": "EN PROCESO",
+        "FALLIDO": "FALLIDO",
+        "EFECTIVO": "EFECTIVO",
+        "COMPLETADO": "COMPLETADO (BLUE/GREEN)",
+    }.get(status, status)
+
+    return f"{app_name} | {environment} | {status_text}"
+
+
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
@@ -46,6 +78,9 @@ def lambda_handler(event, context):
             payload = json.loads(event)
         else:
             payload = event
+
+        payload.setdefault("status", STATUS_BY_EVENT.get(str(payload.get("event_type", "")).lower(), payload.get("status", "INFO")))
+        payload.setdefault("title", build_notification_title(payload))
 
         # Health checks should validate handler logic without depending on external webhook availability.
         if payload.get('dry_run') is True:
@@ -67,6 +102,10 @@ def lambda_handler(event, context):
             teams_message = format_deployment_failure(payload)
         elif event_type == 'jira_resolved':
             teams_message = format_jira_resolved(payload)
+        elif event_type == 'build_in_progress':
+            teams_message = format_generic_message(payload)
+        elif event_type in ('blue_green_completed', 'completado_blue_green'):
+            teams_message = format_generic_message(payload)
         else:
             teams_message = format_generic_message(payload)
         
@@ -455,7 +494,8 @@ def to_plain_text_message(payload: Dict[str, Any]) -> Dict[str, str]:
         commit = payload.get("commit", "")
         environment = payload.get("environment", "")
         message = payload.get("message", "")
-        lines = [f"Build #{build_number} - {status}"]
+        title = payload.get("title") or build_notification_title(payload)
+        lines = [title, f"Build #{build_number} - {status}"]
         if branch:
             lines.append(f"- Branch: {branch}")
         if commit:

@@ -355,6 +355,51 @@ except Exception:
             }
         }
 
+        stage('📢 Notification - In Progress') {
+            steps {
+                script {
+                    sh '''
+                        set +e
+                        TARGET_ENV=$(echo "${BRANCH_NAME#origin/}" | tr '[:lower:]' '[:upper:]')
+                        [ -n "$TARGET_ENV" ] || TARGET_ENV="QA"
+
+                        APP_NAME="${RESOLVED_GITHUB_REPO}"
+                        if [ "${RUN_APP_REPO_TESTS}" = "true" ]; then
+                            APP_NAME=$(basename "${APP_REPO_URL}")
+                            APP_NAME=${APP_NAME%.git}
+                        fi
+                        APP_NAME_SAFE=$(echo "$APP_NAME" | tr -d '"\\<>')
+                        TITLE="${APP_NAME_SAFE} | ${TARGET_ENV} | EN PROCESO"
+
+                        PAYLOAD=$(cat <<EOF
+{
+    "event_type": "build_in_progress",
+    "build_number": "${BUILD_NUMBER}",
+    "repository": "${APP_REPO_URL:-${GIT_URL}}",
+    "app_name": "${APP_NAME_SAFE}",
+    "branch": "${BRANCH_NAME}",
+    "commit": "${COMMIT_HASH}",
+    "status": "EN_PROCESO",
+    "message": "Pipeline en ejecución",
+    "environment": "${TARGET_ENV}",
+    "title": "${TITLE}",
+    "build_url": "${BUILD_URL}",
+    "timestamp": "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+}
+EOF
+)
+
+                        aws lambda invoke \
+                            --function-name "${LAMBDA_FUNCTION}" \
+                            --region "${AWS_REGION}" \
+                            --cli-binary-format raw-in-base64-out \
+                            --payload "$PAYLOAD" \
+                            /tmp/in-progress-notification.json >/dev/null 2>&1 || true
+                    '''
+                }
+            }
+        }
+
         stage('📦 Build') {
             steps {
                 script {
@@ -691,6 +736,14 @@ EOF
                     sh '''
                         set +e
                         SUCCESS_COMMIT="${COMMIT_HASH}"
+                        TARGET_ENV=$(echo "${BRANCH_NAME#origin/}" | tr '[:lower:]' '[:upper:]')
+                        [ -n "$TARGET_ENV" ] || TARGET_ENV="QA"
+
+                        APP_NAME="${RESOLVED_GITHUB_REPO}"
+                        if [ "${RUN_APP_REPO_TESTS}" = "true" ]; then
+                            APP_NAME=$(basename "${APP_REPO_URL}")
+                            APP_NAME=${APP_NAME%.git}
+                        fi
                         if [ -f ".app_repo_commit" ]; then
                             APP_TEST_COMMIT=$(cat .app_repo_commit | tr -d '\n')
                             if [ -n "$APP_TEST_COMMIT" ]; then
@@ -706,19 +759,23 @@ EOF
                             fi
                         fi
                         COMMIT_AUTHOR_SAFE=$(echo "${COMMIT_AUTHOR}" | tr -d '"\\\\<>')
-                        SUCCESS_MSG="✅ Build exitoso - Desplegado a QA | Resuelto por: ${COMMIT_AUTHOR_SAFE}"
+                        APP_NAME_SAFE=$(echo "$APP_NAME" | tr -d '"\\<>')
+                        TITLE="${APP_NAME_SAFE} | ${TARGET_ENV} | EFECTIVO"
+                        SUCCESS_MSG="✅ Build efectivo - Resuelto por: ${COMMIT_AUTHOR_SAFE}"
 
                         PAYLOAD=$(cat <<EOF
 {
     "event_type": "build_success",
     "build_number": "${BUILD_NUMBER}",
     "repository": "${APP_REPO_URL:-${GIT_URL}}",
+    "app_name": "${APP_NAME_SAFE}",
     "branch": "${BRANCH_NAME}",
     "commit": "${SUCCESS_COMMIT}",
     "resolved_by": "${COMMIT_AUTHOR_SAFE}",
-    "status": "EXITOSO",
+    "status": "EFECTIVO",
     "message": "${SUCCESS_MSG}",
-    "environment": "QA",
+    "environment": "${TARGET_ENV}",
+    "title": "${TITLE}",
     "build_url": "${BUILD_URL}",
     "timestamp": "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
 }
@@ -742,6 +799,54 @@ EOF
                 }
             }
         }
+
+        stage('📢 Notification - Completed (Blue/Green)') {
+            when {
+                expression { currentBuild.result == null || currentBuild.result == 'SUCCESS' }
+            }
+            steps {
+                script {
+                    sh '''
+                        set +e
+                        TARGET_ENV=$(echo "${BRANCH_NAME#origin/}" | tr '[:lower:]' '[:upper:]')
+                        [ -n "$TARGET_ENV" ] || TARGET_ENV="QA"
+
+                        APP_NAME="${RESOLVED_GITHUB_REPO}"
+                        if [ "${RUN_APP_REPO_TESTS}" = "true" ]; then
+                            APP_NAME=$(basename "${APP_REPO_URL}")
+                            APP_NAME=${APP_NAME%.git}
+                        fi
+                        APP_NAME_SAFE=$(echo "$APP_NAME" | tr -d '"\\<>')
+                        TITLE="${APP_NAME_SAFE} | ${TARGET_ENV} | COMPLETADO (BLUE/GREEN)"
+
+                        PAYLOAD=$(cat <<EOF
+{
+    "event_type": "completado_blue_green",
+    "build_number": "${BUILD_NUMBER}",
+    "repository": "${APP_REPO_URL:-${GIT_URL}}",
+    "app_name": "${APP_NAME_SAFE}",
+    "branch": "${BRANCH_NAME}",
+    "commit": "${COMMIT_HASH}",
+    "status": "COMPLETADO",
+    "message": "Despliegue completado con estrategia blue/green",
+    "environment": "${TARGET_ENV}",
+    "title": "${TITLE}",
+    "build_url": "${BUILD_URL}",
+    "timestamp": "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+}
+EOF
+)
+
+                        aws lambda invoke \
+                            --function-name "${LAMBDA_FUNCTION}" \
+                            --region "${AWS_REGION}" \
+                            --cli-binary-format raw-in-base64-out \
+                            --payload "$PAYLOAD" \
+                            /tmp/completed-bluegreen-notification.json >/dev/null 2>&1 || true
+                    '''
+                }
+            }
+        }
     }
 
     post {
@@ -753,6 +858,16 @@ EOF
 
                 sh '''
                     INCIDENT_COMMIT="${COMMIT_HASH}"
+                    TARGET_ENV=$(echo "${BRANCH_NAME#origin/}" | tr '[:lower:]' '[:upper:]')
+                    [ -n "$TARGET_ENV" ] || TARGET_ENV="QA"
+
+                    APP_NAME="${RESOLVED_GITHUB_REPO}"
+                    if [ "${RUN_APP_REPO_TESTS}" = "true" ]; then
+                        APP_NAME=$(basename "${APP_REPO_URL}")
+                        APP_NAME=${APP_NAME%.git}
+                    fi
+                    APP_NAME_SAFE=$(echo "$APP_NAME" | tr -d '"\\<>')
+                    TITLE="${APP_NAME_SAFE} | ${TARGET_ENV} | FALLIDO"
                     if [ -f ".app_repo_commit" ]; then
                         APP_TEST_COMMIT=$(cat .app_repo_commit | tr -d '\\n')
                         if [ -n "$APP_TEST_COMMIT" ]; then
@@ -771,11 +886,13 @@ EOF
     "event_type": "build_failure",
     "build_number": "${BUILD_NUMBER}",
     "repository": "${APP_REPO_URL:-${GIT_URL}}",
+    "app_name": "${APP_NAME_SAFE}",
     "branch": "${BRANCH_NAME}",
     "commit": "${INCIDENT_COMMIT}",
     "status": "FALLIDO",
     "message": "$TEAMS_MESSAGE",
-    "environment": "QA",
+    "environment": "${TARGET_ENV}",
+    "title": "${TITLE}",
     "error": "$ERROR_MESSAGE",
     "build_url": "${BUILD_URL}",
     "timestamp": "$(date -u +\'%Y-%m-%dT%H:%M:%SZ\')"
