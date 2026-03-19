@@ -66,20 +66,6 @@ Guía única para entender, configurar, desplegar y operar la plataforma.
 │           Deployed to QA                     + logs/build URL    │
 └─────────────────────────────────────────────────────────────────┘
 
-┌─────────────────────────────────────────────────────────────────┐
-│  3. GESTIÓN DE INCIDENTE (opcional vía Jira)                    │
-│                                                                 │
-│  Equipo corrige el error en su rama                             │
-│       ↓                                                         │
-│  Ticket Jira (manual) → estado DONE / RESOLVED / CLOSED         │
-│       ↓                                                         │
-│  Jira Webhook  →  API Gateway  POST /jira                       │
-│       ↓                                                         │
-│  Lambda: jira-event-handler                                     │
-│   (event: jira:issue_updated, status → DONE)                    │
-│       ↓                                                         │
-│  Teams: ✅ Ticket RESUELTO (si el webhook Jira está activo)     │
-└─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
