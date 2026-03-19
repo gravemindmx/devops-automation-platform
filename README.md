@@ -56,6 +56,9 @@ terraform output   # Copiar webhook_url
 
 Configuración completa: [docs/platform-guide.md](docs/platform-guide.md)
 
+JSON de tarjeta para Power Automate: [docs/power-automate-adaptive-card.json](docs/power-automate-adaptive-card.json)
+JSON de tarjeta para Power Automate (solo fallas): [docs/power-automate-adaptive-card-failure.json](docs/power-automate-adaptive-card-failure.json)
+
 ---
 
 ## Autor

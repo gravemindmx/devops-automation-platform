@@ -1,0 +1,17 @@
+{
+  "type": "OpenApiConnection",
+  "inputs": {
+    "parameters": {
+      "poster": "Flow bot",
+      "location": "Channel",
+      "body/recipient/groupId": "e05f2c6f-0617-414b-a1c3-6b85cc45666c",
+      "body/recipient/channelId": "19:z86W0RpT7IVqq1M94qp3ilGgKqTapelgB_ap8JCCEqA1@thread.tacv2",
+      "body/messageBody": "{\"$schema\": \"http://adaptivecards.io/schemas/adaptive-card.json\", \"type\": \"AdaptiveCard\", \"version\": \"1.4\", \"body\": [{\"type\": \"TextBlock\", \"text\": \"@{coalesce(triggerBody()?['title'], '❌ Build Fallido')}\", \"weight\": \"Bolder\", \"size\": \"Large\", \"color\": \"Attention\", \"wrap\": true}, {\"type\": \"FactSet\", \"facts\": [{\"title\": \"Estado\", \"value\": \"@{coalesce(triggerBody()?['status'], 'FALLIDO')}\"}, {\"title\": \"Build #\", \"value\": \"@{triggerBody()?['build_number']}\"}, {\"title\": \"Repositorio\", \"value\": \"@{coalesce(triggerBody()?['repository'], triggerBody()?['app_name'])}\"}, {\"title\": \"Commit\", \"value\": \"@{triggerBody()?['commit']}\"}, {\"title\": \"Rama\", \"value\": \"@{triggerBody()?['branch']}\"}, {\"title\": \"Ambiente\", \"value\": \"@{triggerBody()?['environment']}\"}, {\"title\": \"Mensaje\", \"value\": \"@{coalesce(triggerBody()?['message'], 'Build fallido')}\"}, {\"title\": \"Error\", \"value\": \"@{coalesce(triggerBody()?['error'], 'Sin error reportado')}\"}]}, {\"type\": \"TextBlock\", \"text\": \"Error: @{coalesce(triggerBody()?['error'], 'Sin error reportado')}\", \"wrap\": true, \"isVisible\": \"@{not(empty(triggerBody()?['error']))}\", \"color\": \"Attention\", \"spacing\": \"Small\"}], \"actions\": [{\"type\": \"Action.OpenUrl\", \"title\": \"Ver build en Jenkins\", \"url\": \"@{triggerBody()?['build_url']}\"}]}"
+    },
+    "host": {
+      "apiId": "/providers/Microsoft.PowerApps/apis/shared_teams",
+      "connection": "shared_teams",
+      "operationId": "PostCardToConversation"
+    }
+  }
+}

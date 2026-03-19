@@ -558,26 +558,48 @@ Política obligatoria de ramas de promoción:
 
 ### Eventos que Teams puede recibir
 
-| `event_type` | Cuándo se envía |
-|---|---|
-| `build_success` | Pipeline QA exitoso |
-| `build_failure` | Cualquier stage falla (incluye error y link del build) |
-| `deployment_success` | Despliegue exitoso |
-| `deployment_failure` | Despliegue fallido |
+| `event_type` | Estado | Cuándo se envía |
+|---|---|---|
+| `build_in_progress` | `EN_PROCESO` | Al iniciar el pipeline |
+| `build_failure` | `FALLIDO` | Si cualquier stage falla |
+| `build_success` | `EFECTIVO` | Cuando el pipeline finaliza exitosamente |
+| `completado_blue_green` | `COMPLETADO` | Al cerrar el ciclo exitoso de despliegue blue/green |
 
 ### 4.1 Comportamiento actual de notificaciones
 
 Comportamiento implementado y validado:
 
-1. En falla de pipeline:
-    - Se envía notificación `build_failure` a Teams con error y URL del build.
+1. Titulo estandar:
+    - Formato: `aplicacion | ambiente | estado`.
+    - Ejemplo: `mi-api | PROD | COMPLETADO (BLUE/GREEN)`.
 
-2. En éxito de pipeline:
-    - Se envía notificación `build_success` a Teams.
+2. En proceso:
+    - Se envia `build_in_progress` con estado `EN_PROCESO` al inicio del flujo.
+
+3. En falla:
+    - Se envia `build_failure` con estado `FALLIDO`, error y URL del build.
+
+4. En exito:
+    - Se envia `build_success` con estado `EFECTIVO`.
     - Incluye `resolved_by` con el autor detectado del commit evaluado.
 
-3. Observabilidad:
-    - El pipeline de CI/CD se centra en build/deploy y notificaciones a Teams.
+5. Completado blue/green:
+    - Se envia `completado_blue_green` con estado `COMPLETADO` al finalizar correctamente.
+
+### 4.2 JSON de Power Automate (Adaptive Card)
+
+Plantilla recomendada para la accion `Post adaptive card` en Power Automate:
+
+- Archivo: `docs/power-automate-adaptive-card.json`
+- Archivo (solo notificaciones fallidas): `docs/power-automate-adaptive-card-failure.json`
+- Campos esperados desde `triggerBody()`: `title`, `status`, `message`, `build_number`, `branch`, `commit`, `environment`, `app_name`, `resolved_by`, `error`, `build_url`, `timestamp`.
+
+Notas:
+
+- El color del titulo se mapea por estado (`EN_PROCESO`, `FALLIDO`, `EFECTIVO`, `COMPLETADO`).
+- El bloque de error solo se muestra cuando el estado es `FALLIDO`.
+- Si falta un campo, la tarjeta usa valores por defecto con `coalesce(...)`.
+- Para flujos que solo envian fallas, usa la plantilla `power-automate-adaptive-card-failure.json` (titulo y color en `Attention`).
 
 ---
 
