@@ -706,79 +706,7 @@ EOF
                             fi
                         fi
                         COMMIT_AUTHOR_SAFE=$(echo "${COMMIT_AUTHOR}" | tr -d '"\\\\<>')
-
-                        RESOLVED_TICKET_KEYS=""
-                        RESOLVED_TICKET_URLS=""
-
-                        # --- Resolve open Jira failure tickets ---
-                        if [ -n "${JIRA_API_TOKEN}" ] && [ -n "${JIRA_DEFAULT_USER_EMAIL}" ]; then
-                            JIRA_AUTH_TOKEN=$(printf "%s:%s" "${JIRA_DEFAULT_USER_EMAIL}" "${JIRA_API_TOKEN}" | base64 | tr -d '\\n')
-                            JIRA_AUTH_HEADER="Authorization: Basic ${JIRA_AUTH_TOKEN}"
-
-                            BRANCH_LABEL=$(echo "jenkins-branch-${BRANCH_NAME}" | tr '/' '-' | tr ' ' '-' | cut -c1-100)
-                            SEARCH_RESP=$(curl -s -G "${JIRA_URL}/rest/api/3/search/jql" \
-                                -H "$JIRA_AUTH_HEADER" \
-                                --data-urlencode "jql=project = ${JIRA_PROJECT_KEY} AND labels = \\"failed-build\\" AND labels = \\"${BRANCH_LABEL}\\" AND statusCategory != Done ORDER BY created DESC" \
-                                --data-urlencode "maxResults=1" \
-                                --data-urlencode "fields=summary,status")
-
-                            OPEN_KEYS=$(echo "$SEARCH_RESP" | /usr/bin/python3.11 -c "
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    keys = [i['key'] for i in data.get('issues', [])]
-    print(' '.join(keys))
-except:
-    print('')
-")
-
-                            for TICKET_KEY in $OPEN_KEYS; do
-                                echo "Resolving Jira ticket: ${TICKET_KEY}"
-
-                                # Add resolution comment
-                                curl -s -X POST "${JIRA_URL}/rest/api/3/issue/${TICKET_KEY}/comment" \
-                                    -H "$JIRA_AUTH_HEADER" \
-                                    -H "Content-Type: application/json" \
-                                    -d "{\"body\":{\"type\":\"doc\",\"version\":1,\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Resuelto automaticamente por Jenkins build #${BUILD_NUMBER} | Commit: ${SUCCESS_COMMIT} | Autor: ${COMMIT_AUTHOR_SAFE} | URL: ${BUILD_URL}\"}]}]}}" \
-                                    > /dev/null
-
-                                # Find transition ID for statusCategory=done
-                                TRANSITIONS=$(curl -s "${JIRA_URL}/rest/api/3/issue/${TICKET_KEY}/transitions" -H "$JIRA_AUTH_HEADER")
-                                DONE_ID=$(echo "$TRANSITIONS" | /usr/bin/python3.11 -c "
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    for t in data.get('transitions', []):
-        if t.get('to', {}).get('statusCategory', {}).get('key', '') == 'done':
-            print(t['id'])
-            sys.exit(0)
-    print('')
-except:
-    print('')
-")
-
-                                if [ -n "$DONE_ID" ]; then
-                                    curl -s -X POST "${JIRA_URL}/rest/api/3/issue/${TICKET_KEY}/transitions" \
-                                        -H "$JIRA_AUTH_HEADER" \
-                                        -H "Content-Type: application/json" \
-                                        -d "{\"transition\":{\"id\":\"${DONE_ID}\"}}" > /dev/null
-                                    echo "✓ Ticket ${TICKET_KEY} transitioned to Done"
-                                else
-                                    echo "⚠ No Done transition found for ${TICKET_KEY}"
-                                fi
-
-                                RESOLVED_TICKET_KEYS="${RESOLVED_TICKET_KEYS} ${TICKET_KEY}"
-                                RESOLVED_TICKET_URLS="${RESOLVED_TICKET_URLS} ${JIRA_URL}/browse/${TICKET_KEY}"
-                            done
-                        fi
-
-                        # --- Build Teams message ---
-                        TICKETS_TRIMMED=$(echo "$RESOLVED_TICKET_KEYS" | xargs)
-                        if [ -n "$TICKETS_TRIMMED" ]; then
-                            SUCCESS_MSG="✅ Build exitoso - Desplegado a QA | Resuelto por: ${COMMIT_AUTHOR_SAFE} | Tickets cerrados: ${TICKETS_TRIMMED}"
-                        else
-                            SUCCESS_MSG="✅ Build exitoso - Desplegado a QA | Resuelto por: ${COMMIT_AUTHOR_SAFE}"
-                        fi
+                        SUCCESS_MSG="✅ Build exitoso - Desplegado a QA | Resuelto por: ${COMMIT_AUTHOR_SAFE}"
 
                         PAYLOAD=$(cat <<EOF
 {
@@ -788,7 +716,6 @@ except:
     "branch": "${BRANCH_NAME}",
     "commit": "${SUCCESS_COMMIT}",
     "resolved_by": "${COMMIT_AUTHOR_SAFE}",
-    "resolved_tickets": "${TICKETS_TRIMMED}",
     "status": "EXITOSO",
     "message": "${SUCCESS_MSG}",
     "environment": "QA",
@@ -834,143 +761,11 @@ EOF
                     fi
 
                     ERROR_MESSAGE="Build #${BUILD_NUMBER} failed on ${BRANCH_NAME} (commit: ${INCIDENT_COMMIT}). See: ${BUILD_URL}"
-                    ISSUE_KEY="N/A"
-                    ISSUE_SUMMARY="N/A"
-                    ISSUE_SUMMARY_PAYLOAD="N/A"
-                    JIRA_BROWSE_URL=""
-                    JIRA_ACTION="none"
-                    TEAMS_MESSAGE="❌ Build fallido - Revisar ticket de Jira"
+                    TEAMS_MESSAGE="❌ Build fallido - Revisar logs del pipeline"
 
                     echo "Error: $ERROR_MESSAGE"
 
-                    # Step 1: Create Jira ticket
-                    EFFECTIVE_JIRA_EMAIL="${JIRA_DEFAULT_USER_EMAIL}"
-
-                    if [ -n "${JIRA_USER_EMAIL}" ] && [ "${JIRA_USER_EMAIL}" != "${JIRA_DEFAULT_USER_EMAIL}" ]; then
-                        echo "ℹ Ignoring JIRA_USER_EMAIL override from upstream (${JIRA_USER_EMAIL}) and using service account ${JIRA_DEFAULT_USER_EMAIL}."
-                    fi
-
-                    if [ -z "$EFFECTIVE_JIRA_EMAIL" ]; then
-                        echo "⚠ JIRA_USER_EMAIL is empty. Jira Cloud API token requires Basic auth (email + token)."
-                    else
-                        JIRA_AUTH_TOKEN=$(printf "%s:%s" "$EFFECTIVE_JIRA_EMAIL" "${JIRA_API_TOKEN}" | base64 | tr -d '\\n')
-                        JIRA_AUTH_HEADER="Authorization: Basic ${JIRA_AUTH_TOKEN}"
-
-                        ERROR_SANITIZED=$(echo "$ERROR_MESSAGE" | tr -d '"' | cut -c1-500)
-                        ISSUE_SUMMARY="[PIPELINE FAILED] ${BRANCH_NAME} - ${INCIDENT_COMMIT}"
-                        ISSUE_SUMMARY_SANITIZED=$(echo "$ISSUE_SUMMARY" | tr -d '"' | cut -c1-200)
-                        FAILURE_SIGNATURE="jenkins-failure-${INCIDENT_COMMIT}"
-                        BRANCH_LABEL=$(echo "jenkins-branch-${BRANCH_NAME}" | tr '/' '-' | tr ' ' '-' | cut -c1-100)
-
-                        # Auto-discover first valid issue type for this project
-                        JIRA_ISSUE_TYPE=$(curl -s -X GET \
-                            "${JIRA_URL}/rest/api/3/project/${JIRA_PROJECT_KEY}" \
-                            -H "$JIRA_AUTH_HEADER" \
-                            | /usr/bin/python3.11 -c "
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    types = [t['name'] for t in data.get('issueTypes', [])]
-    preferred = ['Incident','Incidente','Service Request','Solicitud de servicio','Bug','Task','Story']
-    for p in preferred:
-        if p in types:
-            print(p)
-            sys.exit(0)
-    print(types[0] if types else 'Bug')
-except:
-    print('Bug')
-")
-                        echo "Using Jira issue type: \$JIRA_ISSUE_TYPE"
-
-                        # Deduplicate: reuse existing open issue with the same failure signature
-                        SEARCH_RESPONSE=$(curl -s -G \
-                            "${JIRA_URL}/rest/api/3/search/jql" \
-                            -H "$JIRA_AUTH_HEADER" \
-                            --data-urlencode "jql=project = ${JIRA_PROJECT_KEY} AND labels = ${FAILURE_SIGNATURE} AND statusCategory != Done ORDER BY created DESC" \
-                            --data-urlencode "maxResults=1" \
-                            --data-urlencode "fields=summary")
-
-                        EXISTING_ISSUE_KEY=$(echo "$SEARCH_RESPONSE" | /usr/bin/python3.11 -c "
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    issues = data.get('issues', [])
-    print(issues[0].get('key', '') if issues else '')
-except:
-    print('')
-")
-
-                        EXISTING_ISSUE_SUMMARY=$(echo "$SEARCH_RESPONSE" | /usr/bin/python3.11 -c "
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    issues = data.get('issues', [])
-    print(issues[0].get('fields', {}).get('summary', '') if issues else '')
-except:
-    print('')
-")
-
-                        if [ -n "$EXISTING_ISSUE_KEY" ]; then
-                            ISSUE_KEY="$EXISTING_ISSUE_KEY"
-                            ISSUE_SUMMARY="${EXISTING_ISSUE_SUMMARY:-$ISSUE_SUMMARY}"
-                            JIRA_BROWSE_URL="${JIRA_URL}/browse/${ISSUE_KEY}"
-                            JIRA_ACTION="reused"
-                            echo "ℹ Reusing existing Jira ticket: $ISSUE_KEY"
-                        else
-                            ISSUE_RESPONSE=$(curl -s -X POST \
-                                "${JIRA_URL}/rest/api/3/issue" \
-                                -H "$JIRA_AUTH_HEADER" \
-                                -H "Content-Type: application/json" \
-                                -d @- <<EOF
-{
-    "fields": {
-        "project": {"key": "${JIRA_PROJECT_KEY}"},
-        "summary": "${ISSUE_SUMMARY_SANITIZED}",
-        "description": {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "paragraph",
-                    "content": [
-                        {"type": "text", "text": "${ERROR_SANITIZED}"}
-                    ]
-                }
-            ]
-        },
-        "issuetype": {"name": "${JIRA_ISSUE_TYPE}"},
-                        "labels": ["jenkins", "failed-build", "${FAILURE_SIGNATURE}", "${BRANCH_LABEL}"]
-    }
-}
-EOF
-)
-
-                            ISSUE_KEY=$(echo "$ISSUE_RESPONSE" | grep -o '"key":"[^"]*' | cut -d'"' -f4)
-
-                            if [ -n "$ISSUE_KEY" ] && [ "$ISSUE_KEY" != "null" ]; then
-                                echo "✓ Jira ticket created: $ISSUE_KEY"
-                                JIRA_BROWSE_URL="${JIRA_URL}/browse/${ISSUE_KEY}"
-                                JIRA_ACTION="created"
-                            else
-                                echo "⚠ Failed to create Jira ticket"
-                                echo "Response: $ISSUE_RESPONSE"
-                                ISSUE_KEY="N/A"
-                                JIRA_BROWSE_URL=""
-                                ISSUE_SUMMARY="N/A"
-                                JIRA_ACTION="none"
-                            fi
-                        fi
-
-                        ISSUE_SUMMARY_PAYLOAD=$(echo "$ISSUE_SUMMARY" | tr -d '"' | cut -c1-180)
-
-                        if [ "$JIRA_ACTION" = "created" ]; then
-                            TEAMS_MESSAGE="❌ Build fallido - Ticket Jira creado: ${ISSUE_KEY} (${ISSUE_SUMMARY_PAYLOAD})"
-                        elif [ "$JIRA_ACTION" = "reused" ]; then
-                            TEAMS_MESSAGE="❌ Build fallido - Ticket Jira reutilizado: ${ISSUE_KEY} (${ISSUE_SUMMARY_PAYLOAD})"
-                        fi
-                    fi
-
-                    # Step 2: Notify Teams via Lambda
+                    # Notify Teams via Lambda
                     FAILURE_PAYLOAD=$(cat <<PAYLOAD
 {
     "event_type": "build_failure",
@@ -982,10 +777,6 @@ EOF
     "message": "$TEAMS_MESSAGE",
     "environment": "QA",
     "error": "$ERROR_MESSAGE",
-    "jira_ticket": "$ISSUE_KEY",
-    "jira_ticket_summary": "$ISSUE_SUMMARY_PAYLOAD",
-    "jira_action": "$JIRA_ACTION",
-    "jira_url": "$JIRA_BROWSE_URL",
     "build_url": "${BUILD_URL}",
     "timestamp": "$(date -u +\'%Y-%m-%dT%H:%M:%SZ\')"
 }

@@ -25,18 +25,10 @@ Build (pip + zip)  →  Test (pytest)  →  Deploy QA (Lambda)
    ┌────────────────────────────────┐
 SUCCESS                           FAIL
    ↓                                ↓
-Lambda invoke                  Crea ticket Jira
-(build_success)                     ↓
-   ↓                           Lambda invoke (build_failure)
-Teams ✅ Build OK + QA          Teams ❌ Falla + link Jira
-                                    ↓
-                               Equipo corrige → ticket RESUELTO
-                                    ↓
-                               Jira Webhook → API Gateway POST /jira
-                                    ↓
-                               Lambda jira-event-handler
-                                    ↓
-                               Teams ✅ Ticket resuelto
+Lambda invoke                  Lambda invoke
+(build_success)               (build_failure)
+       ↓                                ↓
+Teams ✅ Build OK + QA          Teams ❌ Falla + logs/build URL
 ```
 
 ---
@@ -49,7 +41,7 @@ Teams ✅ Build OK + QA          Teams ❌ Falla + link Jira
 | `services/teams-notifier/` | Lambda Python — notifica Teams en eventos CI/CD |
 | `services/jira-event-handler/` | Lambda Python — procesa webhooks Jira → Teams |
 | `jenkins/Jenkinsfile` | Pipeline completo: build, test, deploy QA, notificaciones |
-| `scripts/jenkins/` | Scripts de health-check y creación de tickets Jira |
+| `scripts/jenkins/` | Scripts de health-check e integraciones auxiliares |
 
 ---
 

@@ -59,29 +59,26 @@ Guía única para entender, configurar, desplegar y operar la plataforma.
 │             │                                            │      │
 │           SUCCESS                                      FAIL      │
 │             ↓                                            ↓      │
-│   Lambda invoke                              curl Jira REST API  │
-│   (event: build_success)                     → Crea ticket Bug   │
+│   Lambda invoke                              Lambda invoke       │
+│   (event: build_success)                     (event: build_fail) │
 │             ↓                                            ↓      │
-│   Teams: ✅ Build OK                         Lambda invoke       │
-│           Deployed to QA                     (event: build_fail) │
-│                                                          ↓      │
-│                                              Teams: ❌ Build FAIL│
-│                                                   + link Jira   │
+│   Teams: ✅ Build OK                         Teams: ❌ Build FAIL│
+│           Deployed to QA                     + logs/build URL    │
 └─────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
-│  3. RESOLUCIÓN DE INCIDENTE (disparado por Jira)                │
+│  3. GESTIÓN DE INCIDENTE (opcional vía Jira)                    │
 │                                                                 │
 │  Equipo corrige el error en su rama                             │
 │       ↓                                                         │
-│  Ticket Jira → estado DONE / RESOLVED / CLOSED                  │
+│  Ticket Jira (manual) → estado DONE / RESOLVED / CLOSED         │
 │       ↓                                                         │
 │  Jira Webhook  →  API Gateway  POST /jira                       │
 │       ↓                                                         │
 │  Lambda: jira-event-handler                                     │
 │   (event: jira:issue_updated, status → DONE)                    │
 │       ↓                                                         │
-│  Teams: ✅ Ticket RESUELTO  (quién, cuánto tardó)              │
+│  Teams: ✅ Ticket RESUELTO (si el webhook Jira está activo)     │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -117,7 +114,7 @@ devops-automation-platform/
 ├── scripts/
 │   └── jenkins/
 │       ├── health-check.sh            # Valida Lambda QA y API Gateway
-│       └── jira/create-jira-issue.sh  # Crea ticket Jira desde CLI
+│       └── jira/create-jira-issue.sh  # Script auxiliar opcional para Jira
 └── docs/
     ├── README.md
     └── platform-guide.md             # (este archivo)
@@ -522,7 +519,7 @@ Jira (System → WebHooks):
 - Ruta Jenkins: ejecuta pipeline y valida notificaciones/tickets.
 
 1. Ejecuta el pipeline manualmente en Jenkins (sin parámetros) para validar Build/Test/Deploy QA.
-2. Fuerza una falla en una rama de prueba para confirmar creación de ticket Jira y notificación FAIL a Teams.
+2. Fuerza una falla en una rama de prueba para confirmar notificación FAIL a Teams.
 3. Cambia el ticket a `Resolved`/`Done` para validar webhook Jira y notificación de resolución en Teams.
 
 ---
@@ -590,7 +587,7 @@ Repo 2 (tu app)
                    →  Build + Test de la app
                         │
                     Éxito → Lambda teams-notifier → Teams ✅
-                    Fallo → Jira ticket + teams-notifier → Teams ❌
+                    Fallo → teams-notifier → Teams ❌
 ```
 
 ### 3.11 Flujo recomendado de 3 jobs Jenkins (nombres descriptivos)
@@ -608,7 +605,7 @@ Flujo operacional:
 1. Un commit en repo app activa `01-app-repo-trigger`.
 2. `01-app-repo-trigger` dispara `02-platform-ci-qa-orchestrator`.
 3. `02-platform-ci-qa-orchestrator` corre CI/CD completo:
-    - Si falla: crea/reutiliza ticket Jira + notifica Teams.
+    - Si falla: notifica Teams con error y URL del build.
     - Si pasa: notifica Teams y puede cerrar ticket abierto más reciente del branch.
 4. `03-platform-infra-bootstrap` solo se usa para cambios de infraestructura (no en cada commit).
 
@@ -638,36 +635,27 @@ Política obligatoria de ramas de promoción:
 | `event_type` | Cuándo se envía |
 |---|---|
 | `build_success` | Pipeline QA exitoso |
-| `build_failure` | Cualquier stage falla (incluye link a ticket Jira) |
+| `build_failure` | Cualquier stage falla (incluye error y link del build) |
 | `deployment_success` | Despliegue exitoso |
 | `deployment_failure` | Despliegue fallido |
 | `jira_resolved` | Ticket resuelto manualmente vía Lambda |
 | *(desde Jira webhook)* | Ticket cambia a DONE/RESOLVED/CLOSED |
 
-### 4.1 Comportamiento validado de Jira y deduplicación
+### 4.1 Comportamiento actual de notificaciones
 
 Comportamiento implementado y validado:
 
 1. En falla de pipeline:
-    - Usa autenticación Basic (`email:api_token`) con cuenta técnica Jira.
-    - Descubre automáticamente el `issueType` válido del proyecto Jira.
-    - Reutiliza ticket si existe uno abierto con label `jenkins-failure-<commit_hash>`.
-    - Si no existe, crea ticket con labels:
-      - `jenkins`
-      - `failed-build`
-      - `jenkins-failure-<commit_hash>`
-      - `jenkins-branch-<branch_normalizado>`
+    - No se crean tickets Jira automáticamente.
+    - Se envía notificación `build_failure` a Teams con error y URL del build.
 
 2. En éxito de pipeline:
-    - Busca tickets abiertos del branch actual (`failed-build` + `jenkins-branch-<branch_normalizado>`).
-    - Limita a `maxResults=1` para cerrar solo el más reciente del branch.
-    - Agrega comentario de resolución automática (build, commit, autor, URL).
-    - Transiciona a estado `Done` usando transición Jira válida.
-    - Envía Teams con `Resuelto por` y `Tickets cerrados`.
+    - Se envía notificación `build_success` a Teams.
+    - Incluye `resolved_by` con el autor detectado del commit evaluado.
 
-3. Compatibilidad Jira Cloud:
-    - Para búsquedas JQL se usa `/rest/api/3/search/jql` (no `/rest/api/3/search`, deprecado).
-    - El campo `description` de Jira se envía en formato ADF (Atlassian Document Format).
+3. Jira como integración opcional:
+    - El webhook de Jira (`/jira`) puede mantenerse activo para notificar resoluciones de tickets gestionados manualmente.
+    - El pipeline de CI/CD ya no crea ni cierra tickets Jira.
 
 ---
 
@@ -727,7 +715,6 @@ python -m pytest services/jira-event-handler/tests/ -v
 | Pipeline no se dispara con el merge | Webhook de GitHub mal configurado | Revisar `Settings → Webhooks` en GitHub; verificar entregas recientes |
 | Lambda falla con env var missing | Secretos `TF_VAR_*` no cargados o credenciales Jenkins incompletas | Exportar `TF_VAR_*` localmente o revisar credentials en Jenkins y volver a aplicar |
 | Jira webhook no llega a la Lambda | URL `jira_webhook_url` incorrecta | Ejecutar `terraform output jira_webhook_url` y actualizar en Jira |
-| Ticket Jira no se crea en falla | Token Jira expirado o credencial mal configurada | Rotar el API Token y actualizar la credencial `jira-api-token` en Jenkins |
 | Teams no recibe notificación | Webhook de Teams expirado | Regenerar el webhook en el canal Teams y actualizar credencial |
 | Jenkins no puede crear rama | Token GitHub sin permisos `repo` | Regenerar token con scope `repo` y actualizar credencial `github-token` |
 
@@ -760,22 +747,17 @@ Usa este runbook como checklist rápido para operación diaria.
 
 ### 8.2 Si hay falla de pipeline
 
-1. Confirmar que se creó o reutilizó ticket Jira.
-2. Confirmar notificación Teams con:
-    - número de ticket
-    - resumen del ticket
-    - link de Jira
-3. Confirmar deduplicación:
-    - para mismo commit (`jenkins-failure-<hash>`) no debe abrir otro ticket.
+1. Confirmar notificación Teams con:
+    - estado de fallo
+    - error principal
+    - link del build en Jenkins
+2. Confirmar que el log de Jenkins contiene contexto suficiente del error para diagnóstico.
 
 ### 8.3 Si hay éxito después de una falla
 
 1. Confirmar notificación Teams de build exitoso con:
     - `Resuelto por`
-    - `Tickets cerrados`
-2. Confirmar en Jira:
-    - comentario automático de resolución en el ticket
-    - transición a `Done` del ticket más reciente del branch
+2. Confirmar que el build en Jenkins finalizó en `SUCCESS`.
 
 ### 8.4 Si hay cambio de infraestructura
 
@@ -829,7 +811,7 @@ Nota sobre políticas de ramas en GitHub:
 
 ## 10) Validación End-to-End (evidencias)
 
-Esta validación confirma el ciclo completo: falla controlada -> ticket Jira -> corrección -> cierre automático -> notificación final.
+Esta validación confirma el ciclo completo: falla controlada -> corrección -> notificación final.
 
 ### 10.1 Escenario A: falla controlada
 
@@ -837,28 +819,21 @@ Esta validación confirma el ciclo completo: falla controlada -> ticket Jira -> 
 2. Hacer push a `qa` o `prod`.
 3. Evidencias esperadas en logs Jenkins:
     - `Pipeline FAILED - Error Handling`
-    - `Using Jira issue type: ...`
-    - `Jira ticket created: <KEY>` o `Reusing existing Jira ticket: <KEY>`
     - `Failure notification sent to Teams`
 4. Evidencias esperadas en Teams:
     - mensaje de build fallido
-    - ticket Jira visible con link
+    - error principal y link del build
 
 ### 10.2 Escenario B: corrección
 
 1. Quitar la falla temporal y hacer push.
 2. Evidencias esperadas en logs Jenkins:
     - `Status: SUCCESS`
-    - `Resolving Jira ticket: <KEY>`
-    - `Ticket <KEY> transitioned to Done`
     - `Success notification sent to Teams`
 3. Evidencias esperadas en Teams:
     - build exitoso
     - `Resuelto por: <usuario>`
-    - `Tickets cerrados: <KEY>`
 
-### 10.3 Verificación Jira posterior
+### 10.3 Verificación Jira (opcional)
 
-1. El ticket tiene comentario de resolución automática con build/commit/autor.
-2. El ticket quedó en categoría `Done`.
-3. Si vuelves a fallar con otro commit, se crea/reutiliza ticket correcto sin duplicados para el mismo hash.
+1. Si tu equipo usa Jira manualmente, confirmar que el webhook `/jira` sigue notificando cambios de estado a Teams.
