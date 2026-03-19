@@ -12,11 +12,9 @@ Guía única para entender, configurar, desplegar y operar la plataforma.
 |---|---|
 | **Terraform** | Provisiona toda la infraestructura AWS (red, Jenkins ALB, Lambdas, API Gateway, IAM) |
 | **Jenkins** | Orquestador CI/CD; recibe webhooks de GitHub y ejecuta el pipeline completo |
-| **AWS Lambda – teams-notifier** | Envía notificaciones a Microsoft Teams (éxito, falla, resolución) |
-| **AWS Lambda – jira-event-handler** | Procesa webhooks de Jira y notifica en Teams cuando un ticket se resuelve |
-| **API Gateway** | Punto de entrada HTTP para ambas Lambdas (`POST /notify` y `POST /jira`) |
+| **AWS Lambda – teams-notifier** | Envía notificaciones a Microsoft Teams (éxito, falla, despliegue) |
+| **API Gateway** | Punto de entrada HTTP para notificaciones (`POST /notify`) |
 | **GitHub** | Repositorio de código; dispara Jenkins vía webhook en commits o PR merges a `qa` y `prod` |
-| **Jira** | Gestión de incidentes; dispara jira-event-handler vía webhook al resolver tickets |
 | **Microsoft Teams** | Canal de notificaciones operativas |
 
 ---
@@ -29,9 +27,8 @@ Guía única para entender, configurar, desplegar y operar la plataforma.
 │                                                                 │
 │  terraform apply                                                │
 │       ↓                                                         │
-│  AWS Lambda (teams-notifier + jira-event-handler)               │
+│  AWS Lambda (teams-notifier)                                    │
 │  API Gateway  →  POST /notify  →  teams-notifier                │
-│                  POST /jira    →  jira-event-handler            │
 │  IAM roles + Jenkins ALB                                        │
 └─────────────────────────────────────────────────────────────────┘
 
@@ -43,10 +40,10 @@ Guía única para entender, configurar, desplegar y operar la plataforma.
 │  Stage: Checkout                                                │
 │       ↓                                                         │
 │  Stage: Build                                                   │
-│   pip install + zip  (teams-notifier.zip, jira-handler.zip)     │
+│   pip install + zip  (teams-notifier.zip)                        │
 │       ↓                                                         │
 │  Stage: Test                                                    │
-│   python -m pytest  (teams-notifier + jira-event-handler)       │
+│   python -m pytest  (teams-notifier)                            │
 │       ↓                                                         │
 │  Stage: Security Scan  (auditoría de dependencias)              │
 │       ↓                                                         │
@@ -84,23 +81,17 @@ devops-automation-platform/
 │           ├── network/               # VPC, subnets, route tables, IGW
 │           ├── jenkins/               # ALB, security groups, IAM para Jenkins EC2
 │           ├── lambda/                # Lambda teams-notifier + IAM
-│           ├── apigateway/            # HTTP API: POST /notify + POST /jira
-│           └── jira-handler/          # Lambda jira-event-handler + IAM
+│           └── apigateway/            # HTTP API: POST /notify
 ├── services/
 │   ├── teams-notifier/
-│   │   ├── src/lambda.py              # Handler: build_success/failure, deployment, jira_resolved
+│   │   ├── src/lambda.py              # Handler: build_success/failure y deployment
 │   │   ├── tests/test_lambda.py       # 3 pruebas pytest
 │   │   └── config/                   # requirements.txt, setup.py, Makefile
-│   └── jira-event-handler/
-│       ├── src/handler.py             # Handler: issue_updated → resolución → Teams
-│       ├── tests/test_handler.py      # 3 pruebas pytest
-│       └── config/
 ├── jenkins/
 │   └── Jenkinsfile                    # Pipeline completo con triggers y manejo de errores
 ├── scripts/
 │   └── jenkins/
 │       ├── health-check.sh            # Valida Lambda QA y API Gateway
-│       └── jira/create-jira-issue.sh  # Script auxiliar opcional para Jira
 └── docs/
     ├── README.md
     └── platform-guide.md             # (este archivo)
@@ -176,13 +167,13 @@ Checklist rápido por ruta:
 Ruta Local:
 
 1. Completar `terraform.tfvars` solo con valores no sensibles.
-2. Exportar `TF_VAR_github_token`, `TF_VAR_jira_api_token`, `TF_VAR_teams_webhook_url`, `TF_VAR_teams_qa_webhook_url`.
+2. Exportar `TF_VAR_github_token`, `TF_VAR_teams_webhook_url`, `TF_VAR_teams_qa_webhook_url`.
 3. Ejecutar `terraform init/plan/apply` desde `infrastructure/terraform`.
 
 Ruta Jenkins:
 
 1. Completar `terraform.tfvars` (no sensible) en el repositorio.
-2. Cargar secrets en Jenkins Credentials (`github-token`, `jira-api-token`, `teams-webhook`, `teams-qa-webhook`, `jira-url`).
+2. Cargar secrets en Jenkins Credentials (`github-token`, `teams-webhook`, `teams-qa-webhook`).
 3. Ejecutar pipeline con `APPLY_TERRAFORM=true`.
 
 ### 3.3 Variables: qué se configura y dónde
@@ -197,12 +188,8 @@ No todos los valores se configuran en el mismo lugar.
 | `private_subnet_id` | Sí | `terraform.tfvars` | `subnet-xxxxxxxx` |
 | `github_org` | Sí | `terraform.tfvars` | `mi-org` |
 | `github_repo` | Sí | `terraform.tfvars` | `devops-automation-platform` |
-| `jira_url` | Sí | `terraform.tfvars` o Jenkins cred `jira-url` | `https://mi-org.atlassian.net` |
-| `jira_project_key` | Sí | `terraform.tfvars` | `DEVOPS` |
-| `jira_assignee_user` | Opcional | `terraform.tfvars` | `qa-team` |
 | `qa_environment_url` | Opcional | `terraform.tfvars` | `https://qa-api.example.com` |
 | `github_token` | Sí | `TF_VAR_github_token` o Jenkins cred `github-token` | token |
-| `jira_api_token` | Sí | `TF_VAR_jira_api_token` o Jenkins cred `jira-api-token` | token |
 | `teams_webhook_url` | Sí | `TF_VAR_teams_webhook_url` o Jenkins cred `teams-webhook` | URL webhook |
 | `teams_qa_webhook_url` | Sí | `TF_VAR_teams_qa_webhook_url` o Jenkins cred `teams-qa-webhook` | URL webhook |
 
@@ -223,13 +210,6 @@ GitHub:
 - `github_repo`: nombre del repositorio.
 - `github_token` (secreto): GitHub -> Settings -> Developer settings -> Personal access tokens (scope mínimo: `repo`).
 
-Jira:
-
-- `jira_url`: URL base de tu instancia, por ejemplo `https://tu-org.atlassian.net`.
-- `jira_project_key`: Jira -> Project settings -> Details (Project key).
-- `jira_assignee_user`: usuario/equipo por defecto para tickets automáticos.
-- `jira_api_token` (secreto): Atlassian account -> Security -> API tokens.
-
 Teams:
 
 - `teams_webhook_url` (secreto): en el canal principal, crear Incoming Webhook y copiar URL.
@@ -245,23 +225,17 @@ En `terraform.tfvars` (no sensible):
 - `private_subnet_id`
 - `github_org`
 - `github_repo`
-- `jira_url`
-- `jira_project_key`
-- `jira_assignee_user`
 - `qa_environment_url`
 
 En variables de entorno local (`TF_VAR_*`):
 
 - `TF_VAR_github_token`
-- `TF_VAR_jira_api_token`
 - `TF_VAR_teams_webhook_url`
 - `TF_VAR_teams_qa_webhook_url`
 
 En Jenkins Credentials:
 
 - `github-token`
-- `jira-url`
-- `jira-api-token`
 - `teams-webhook`
 - `teams-qa-webhook`
 
@@ -271,16 +245,10 @@ Estas variables no van en `terraform.tfvars`; viven en Jenkins (credenciales, pa
 
 | Variable | Fuente | Dónde se define | Valor recomendado |
 |---|---|---|---|
-| `JIRA_URL` | Credencial Jenkins | `jira-url` | `https://<tu-org>.atlassian.net` |
-| `JIRA_API_TOKEN` | Credencial Jenkins | `jira-api-token` | API token de cuenta técnica Jira |
-| `JIRA_DEFAULT_USER_EMAIL` | Jenkinsfile (`environment`) | `jenkins/Jenkinsfile` | `infraestructura@imony.mx` |
-| `JIRA_PROJECT_KEY` | Jenkinsfile (`environment`) | `jenkins/Jenkinsfile` | `NFRTST` |
 | `TEAMS_WEBHOOK` | Credencial Jenkins | `teams-webhook` | Webhook Teams canal principal |
 | `TEAMS_QA_WEBHOOK` | Credencial Jenkins | `teams-qa-webhook` | Webhook Teams canal QA |
 | `LAMBDA_FUNCTION` | Jenkinsfile (`environment`) | `jenkins/Jenkinsfile` | `devops-platform-teams-notifier` |
-| `QA_JIRA_HANDLER_FUNCTION` | Jenkinsfile (`environment`) | `jenkins/Jenkinsfile` | `devops-platform-jira-event-handler` |
 | `AWS_REGION` | Jenkinsfile (`environment`) | `jenkins/Jenkinsfile` | `us-east-1` |
-| `JIRA_USER_EMAIL` | Parámetro Jenkins | parámetro de job | opcional, se ignora si difiere de la cuenta técnica |
 | `APP_REPO_URL` | Parámetro Jenkins | parámetro de job | URL del repo app (repo 2) |
 | `APP_REPO_BRANCH` | Parámetro Jenkins | parámetro de job | `qa` |
 | `RUN_APP_REPO_TESTS` | Parámetro Jenkins | parámetro de job | `true` para validar repo app |
@@ -303,7 +271,6 @@ PowerShell (Windows):
 
 ```powershell
 $env:TF_VAR_github_token = "<github_pat>"
-$env:TF_VAR_jira_api_token = "<jira_api_token>"
 $env:TF_VAR_teams_webhook_url = "<teams_webhook_general>"
 $env:TF_VAR_teams_qa_webhook_url = "<teams_webhook_qa>"
 ```
@@ -312,7 +279,6 @@ Bash (Linux/macOS):
 
 ```bash
 export TF_VAR_github_token="<github_pat>"
-export TF_VAR_jira_api_token="<jira_api_token>"
 export TF_VAR_teams_webhook_url="<teams_webhook_general>"
 export TF_VAR_teams_qa_webhook_url="<teams_webhook_qa>"
 ```
@@ -333,7 +299,6 @@ Outputs clave:
 | Output | Uso |
 |---|---|
 | `webhook_url` | Endpoint API Gateway para integración de notificaciones |
-| `jira_webhook_url` | Endpoint API Gateway para webhook de Jira (`POST /jira`) |
 | `jenkins_public_url` | URL pública de Jenkins por ALB |
 
 ### 3.7 Configurar Jenkins (Solo Jenkins)
@@ -350,8 +315,6 @@ En **Manage Jenkins → Credentials**, crear:
 | ID | Tipo | Valor |
 |---|---|---|
 | `github-token` | Secret text | GitHub PAT con scope `repo` |
-| `jira-url` | Secret text | URL base Jira |
-| `jira-api-token` | Secret text | API token Jira |
 | `teams-webhook` | Secret text | Webhook Teams canal principal |
 | `teams-qa-webhook` | Secret text | Webhook Teams canal QA |
 
@@ -360,8 +323,6 @@ Tipo exacto recomendado en Jenkins (para este Jenkinsfile):
 - Scope: `Global`.
 - Dominio: `Global credentials (unrestricted)`.
 - `github-token`: `Secret text`.
-- `jira-url`: `Secret text`.
-- `jira-api-token`: `Secret text`.
 - `teams-webhook`: `Secret text`.
 - `teams-qa-webhook`: `Secret text`.
 
@@ -381,28 +342,14 @@ Plantilla por credencial (copiar y crear una por una):
     - `ID`: `github-token`
     - `Description`: `GitHub PAT for pipeline git operations`
 
-2. Jira URL
-    - `Kind`: `Secret text`
-    - `Scope`: `Global`
-    - `Secret`: `https://tu-org.atlassian.net`
-    - `ID`: `jira-url`
-    - `Description`: `Jira base URL`
-
-3. Jira API token
-    - `Kind`: `Secret text`
-    - `Scope`: `Global`
-    - `Secret`: token API de Jira
-    - `ID`: `jira-api-token`
-    - `Description`: `Jira API token for incident creation`
-
-4. Teams webhook principal
+2. Teams webhook principal
     - `Kind`: `Secret text`
     - `Scope`: `Global`
     - `Secret`: URL del Incoming Webhook del canal principal
     - `ID`: `teams-webhook`
     - `Description`: `Teams webhook for main notifications`
 
-5. Teams webhook QA
+3. Teams webhook QA
     - `Kind`: `Secret text`
     - `Scope`: `Global`
     - `Secret`: URL del Incoming Webhook del canal QA
@@ -416,8 +363,7 @@ Validación rápida (obligatoria):
 
 Uso en pipeline:
 
-- `github-token`: creación de ramas y autenticación Git HTTPS.
-- `jira-url` + `jira-api-token`: creación automática de ticket en falla.
+- `github-token`: operaciones de autenticación Git HTTPS.
 - `teams-webhook` + `teams-qa-webhook`: notificaciones de build/despliegue.
 
 Luego crear el job Pipeline:
@@ -494,19 +440,14 @@ GitHub (si usas Organization Folder):
 - Alternativa: webhook a nivel organización apuntando a `https://<jenkins-public-url>/github-webhook/`.
 - Después de configurar credenciales/app, ejecutar `Scan Organization Now`.
 
-Jira (System → WebHooks):
-
-- URL: valor de `jira_webhook_url` (terraform output)
-- Events: `Issue updated` (incluyendo cambio de status)
-
 ### 3.9 Ejecutar una prueba end-to-end (Según ruta elegida)
 
 - Ruta Local: valida `terraform plan/apply` y revisa outputs.
-- Ruta Jenkins: ejecuta pipeline y valida notificaciones/tickets.
+- Ruta Jenkins: ejecuta pipeline y valida notificaciones.
 
 1. Ejecuta el pipeline manualmente en Jenkins (sin parámetros) para validar Build/Test/Deploy QA.
 2. Fuerza una falla en una rama de prueba para confirmar notificación FAIL a Teams.
-3. Cambia el ticket a `Resolved`/`Done` para validar webhook Jira y notificación de resolución en Teams.
+3. Repite una corrida exitosa para validar consistencia del estado `SUCCESS` en Teams.
 
 ---
 
@@ -527,7 +468,6 @@ Aplica cuando tienes un repo de plataforma (este proyecto) y un repo de aplicaci
 2. Edita las variables al inicio del archivo:
    - `APP_NAME`: nombre de tu aplicación.
    - `LAMBDA_NOTIFIER`: nombre exacto de la función `teams-notifier` en AWS.
-   - `JIRA_PROJECT_KEY`: tu project key en Jira.
    - `AWS_REGION`: región donde desplegaste las Lambdas.
 3. Personaliza los stages `Build` y `Test` según el stack de tu app (Node.js, Python, Java, etc.).
 4. Commit y push de `jenkins/Jenkinsfile` al repo de app.
@@ -548,7 +488,7 @@ En Jenkins → New Item → `app-piloto-ci` → Pipeline → OK:
 | Pipeline | Branch | `*/qa` (crear job adicional o multibranch para `prod`) |
 | Pipeline | Script Path | `jenkins/Jenkinsfile` |
 
-Las credenciales `jira-url`, `jira-api-token`, `teams-webhook` ya están configuradas en Jenkins — este job las reutiliza automáticamente por ID.
+La credencial `teams-webhook` ya debe estar configurada en Jenkins para este job.
 
 ### Paso 3 — Agregar webhook en el repo de app
 
@@ -583,7 +523,7 @@ Para que el flujo sea fácil de operar, usa estos 3 jobs con nombres explícitos
 | Orden | Nombre sugerido | Nombre actual típico | Trigger | Responsabilidad |
 |---|---|---|---|---|
 | 1 | `01-app-repo-trigger` | `app-repo-trigger` | SCM change en repo app | Detecta cambios en repo app y dispara el orquestador |
-| 2 | `02-platform-ci-qa-orchestrator` | `app-pilot-ci` | Upstream (`01-app-repo-trigger`) o manual | Ejecuta `jenkins/Jenkinsfile`: build/test/deploy/notificaciones/Jira |
+| 2 | `02-platform-ci-qa-orchestrator` | `app-pilot-ci` | Upstream (`01-app-repo-trigger`) o manual | Ejecuta `jenkins/Jenkinsfile`: build/test/deploy/notificaciones |
 | 3 | `03-platform-infra-bootstrap` | `devops-platform-deploy` (o job dedicado) | Manual bajo demanda | Ejecuta pipeline con `APPLY_TERRAFORM=true` para crear/actualizar infraestructura |
 
 Flujo operacional:
@@ -624,24 +564,20 @@ Política obligatoria de ramas de promoción:
 | `build_failure` | Cualquier stage falla (incluye error y link del build) |
 | `deployment_success` | Despliegue exitoso |
 | `deployment_failure` | Despliegue fallido |
-| `jira_resolved` | Ticket resuelto manualmente vía Lambda |
-| *(desde Jira webhook)* | Ticket cambia a DONE/RESOLVED/CLOSED |
 
 ### 4.1 Comportamiento actual de notificaciones
 
 Comportamiento implementado y validado:
 
 1. En falla de pipeline:
-    - No se crean tickets Jira automáticamente.
     - Se envía notificación `build_failure` a Teams con error y URL del build.
 
 2. En éxito de pipeline:
     - Se envía notificación `build_success` a Teams.
     - Incluye `resolved_by` con el autor detectado del commit evaluado.
 
-3. Jira como integración opcional:
-    - El webhook de Jira (`/jira`) puede mantenerse activo para notificar resoluciones de tickets gestionados manualmente.
-    - El pipeline de CI/CD ya no crea ni cierra tickets Jira.
+3. Observabilidad:
+    - El pipeline de CI/CD se centra en build/deploy y notificaciones a Teams.
 
 ---
 
@@ -678,7 +614,6 @@ aws lambda get-function --function-name devops-platform-teams-notifier
 
 # Ver logs en tiempo real
 aws logs tail /aws/lambda/devops-platform-teams-notifier --follow
-aws logs tail /aws/lambda/devops-platform-jira-event-handler --follow
 
 # Estado del target group de Jenkins
 aws elbv2 describe-target-health --target-group-arn <arn>
@@ -689,9 +624,6 @@ aws elbv2 describe-target-health --target-group-arn <arn>
 ```bash
 # Teams Notifier
 python -m pytest services/teams-notifier/tests/ -v
-
-# Jira Event Handler
-python -m pytest services/jira-event-handler/tests/ -v
 ```
 
 ### Problemas comunes
@@ -700,7 +632,6 @@ python -m pytest services/jira-event-handler/tests/ -v
 |---|---|---|
 | Pipeline no se dispara con el merge | Webhook de GitHub mal configurado | Revisar `Settings → Webhooks` en GitHub; verificar entregas recientes |
 | Lambda falla con env var missing | Secretos `TF_VAR_*` no cargados o credenciales Jenkins incompletas | Exportar `TF_VAR_*` localmente o revisar credentials en Jenkins y volver a aplicar |
-| Jira webhook no llega a la Lambda | URL `jira_webhook_url` incorrecta | Ejecutar `terraform output jira_webhook_url` y actualizar en Jira |
 | Teams no recibe notificación | Webhook de Teams expirado | Regenerar el webhook en el canal Teams y actualizar credencial |
 | Jenkins no puede crear rama | Token GitHub sin permisos `repo` | Regenerar token con scope `repo` y actualizar credencial `github-token` |
 
@@ -723,13 +654,10 @@ Usa este runbook como checklist rápido para operación diaria.
 1. Verificar estado Jenkins (jobs en verde, cola sin bloqueos).
 2. Verificar credenciales vigentes en Jenkins:
     - `github-token`
-    - `jira-url`
-    - `jira-api-token`
     - `teams-webhook`
     - `teams-qa-webhook`
 3. Verificar conectividad AWS/Lambdas:
     - `devops-platform-teams-notifier`
-    - `devops-platform-jira-event-handler`
 
 ### 8.2 Si hay falla de pipeline
 
@@ -820,6 +748,6 @@ Esta validación confirma el ciclo completo: falla controlada -> corrección -> 
     - build exitoso
     - `Resuelto por: <usuario>`
 
-### 10.3 Verificación Jira (opcional)
+### 10.3 Verificación final
 
-1. Si tu equipo usa Jira manualmente, confirmar que el webhook `/jira` sigue notificando cambios de estado a Teams.
+1. Confirmar que Teams recibe notificaciones consistentes en corridas consecutivas de `qa` y/o `prod`.
