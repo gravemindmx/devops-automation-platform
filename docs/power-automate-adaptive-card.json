@@ -1,0 +1,17 @@
+{
+  "type": "OpenApiConnection",
+  "inputs": {
+    "parameters": {
+      "poster": "User",
+      "location": "Channel",
+      "body/recipient/groupId": "e05f2c6f-0617-414b-a1c3-6b85cc45666c",
+      "body/recipient/channelId": "19:z86W0RpT7IVqq1M94qp3ilGgKqTapelgB_ap8JCCEqA1@thread.tacv2",
+      "body/messageBody": "{\"$schema\": \"http://adaptivecards.io/schemas/adaptive-card.json\", \"type\": \"AdaptiveCard\", \"version\": \"1.4\", \"body\": [{\"type\": \"TextBlock\", \"text\": \"@{concat(if(equals(triggerBody()?['status'],'EN_PROCESO'),'⏳',if(equals(triggerBody()?['status'],'FALLIDO'),'❌',if(equals(triggerBody()?['status'],'EFECTIVO'),'✅',if(equals(triggerBody()?['status'],'COMPLETADO'),'🎉','ℹ️')))), ' ', triggerBody()?['title'])}\", \"weight\": \"Bolder\", \"size\": \"Large\", \"color\": \"@{if(equals(triggerBody()?['status'],'EN_PROCESO'),'Accent',if(equals(triggerBody()?['status'],'FALLIDO'),'Attention','Good'))}\", \"wrap\": true}, {\"type\": \"TextBlock\", \"text\": \"@{coalesce(triggerBody()?['message'], 'Notificacion de pipeline')}\", \"wrap\": true, \"spacing\": \"Small\"}, {\"type\": \"FactSet\", \"facts\": [{\"title\": \"Estado\", \"value\": \"@{triggerBody()?['status']}\"}, {\"title\": \"Ambiente\", \"value\": \"@{triggerBody()?['environment']}\"}, {\"title\": \"Build #\", \"value\": \"@{triggerBody()?['build_number']}\"}, {\"title\": \"Rama\", \"value\": \"@{triggerBody()?['branch']}\"}, {\"title\": \"Commit\", \"value\": \"@{triggerBody()?['commit']}\"}, {\"title\": \"App\", \"value\": \"@{triggerBody()?['app_name']}\"}, {\"title\": \"Resuelto por\", \"value\": \"@{triggerBody()?['resolved_by']}\"}, {\"title\": \"Timestamp\", \"value\": \"@{triggerBody()?['timestamp']}\"}]}, {\"type\": \"TextBlock\", \"text\": \"Error: @{coalesce(triggerBody()?['error'], 'Sin error reportado')}\", \"wrap\": true, \"isVisible\": \"@{and(not(empty(triggerBody()?['error'])), equals(triggerBody()?['status'], 'FALLIDO'))}\", \"color\": \"Attention\", \"spacing\": \"Small\"}], \"actions\": [{\"type\": \"Action.OpenUrl\", \"title\": \"Ver Build en Jenkins\", \"url\": \"@{triggerBody()?['build_url']}\"}]}"
+    },
+    "host": {
+      "apiId": "/providers/Microsoft.PowerApps/apis/shared_teams",
+      "connection": "shared_teams",
+      "operationId": "PostCardToConversation"
+    }
+  }
+}
