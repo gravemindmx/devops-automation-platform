@@ -195,7 +195,7 @@ pipeline {
                             # If this run validates repo 2, enforce policy against app repo head commit.
                             if [ "${RUN_APP_REPO_TESTS}" = "true" ]; then
                                 rm -rf app-repo-policy-check
-                                NORMALIZED_APP_REPO_BRANCH=$(echo "${APP_REPO_BRANCH}" | sed 's#^\*/##; s#^origin/##')
+                                NORMALIZED_APP_REPO_BRANCH=$(echo "${APP_REPO_BRANCH}" | sed 's#^[*]/##; s#^origin/##')
                                 APP_REPO_AUTH_URL=$(echo "${APP_REPO_URL}" | sed "s#https://#https://${GH_TOKEN}@#")
                                 git clone --depth 1 --branch "${NORMALIZED_APP_REPO_BRANCH}" --single-branch "${APP_REPO_AUTH_URL}" app-repo-policy-check
 
@@ -470,7 +470,7 @@ EOF
                             rm -rf app-repo
                             rm -f .app_repo_commit
                             rm -f .app_repo_author
-                            NORMALIZED_APP_REPO_BRANCH=$(echo "${APP_REPO_BRANCH}" | sed 's#^\*/##; s#^origin/##')
+                            NORMALIZED_APP_REPO_BRANCH=$(echo "${APP_REPO_BRANCH}" | sed 's#^[*]/##; s#^origin/##')
                             APP_REPO_AUTH_URL=$(echo "${APP_REPO_URL}" | sed "s#https://#https://${GH_TOKEN}@#")
 
                             git clone --branch "${NORMALIZED_APP_REPO_BRANCH}" --single-branch "${APP_REPO_AUTH_URL}" app-repo
