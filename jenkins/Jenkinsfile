@@ -318,6 +318,34 @@ except Exception:
                             export TF_VAR_github_repo="${RESOLVED_GITHUB_REPO:-$GITHUB_REPO}"
 
                             terraform init
+
+                            # Jenkins workspace can lose local terraform state between runs.
+                            # Import critical existing resources so plan/apply remains idempotent.
+                            LAMBDA_TF_ADDR="module.lambda.aws_lambda_function.teams_notifier_function"
+                            if ! terraform state show "$LAMBDA_TF_ADDR" >/dev/null 2>&1; then
+                                if aws lambda get-function --function-name "${LAMBDA_FUNCTION}" --region "${AWS_REGION}" >/dev/null 2>&1; then
+                                    echo "Importing existing Lambda into Terraform state: ${LAMBDA_FUNCTION}"
+                                    terraform import -input=false "$LAMBDA_TF_ADDR" "${LAMBDA_FUNCTION}" || true
+                                fi
+                            fi
+
+                            if [ "${TF_VAR_enable_load_balancer:-true}" = "true" ]; then
+                                ALB_TF_ADDR="module.jenkins.aws_lb.jenkins_public_alb[0]"
+                                if ! terraform state show "$ALB_TF_ADDR" >/dev/null 2>&1; then
+                                    ALB_NAME="devops-platform-alb"
+                                    EXISTING_ALB_ARN=$(aws elbv2 describe-load-balancers \
+                                        --region "${AWS_REGION}" \
+                                        --names "$ALB_NAME" \
+                                        --query 'LoadBalancers[0].LoadBalancerArn' \
+                                        --output text 2>/dev/null || true)
+
+                                    if [ -n "$EXISTING_ALB_ARN" ] && [ "$EXISTING_ALB_ARN" != "None" ]; then
+                                        echo "Importing existing ALB into Terraform state: ${ALB_NAME}"
+                                        terraform import -input=false "$ALB_TF_ADDR" "$EXISTING_ALB_ARN" || true
+                                    fi
+                                fi
+                            fi
+
                             terraform plan -input=false -var-file=terraform.tfvars -out=tfplan
 
                             if [ "${TERRAFORM_AUTO_APPROVE}" = "true" ]; then
