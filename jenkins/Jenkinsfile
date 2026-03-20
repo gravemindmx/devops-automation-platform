@@ -67,6 +67,11 @@ pipeline {
             defaultValue: 'qa',
             description: 'Branch to checkout from secondary application repository'
         )
+        string(
+            name: 'NOTIFICATION_GAP_SECONDS',
+            defaultValue: '20',
+            description: 'Seconds to wait between EFECTIVO and COMPLETADO notifications'
+        )
     }
 
     triggers {
@@ -815,7 +820,7 @@ EOF
                         COMMIT_AUTHOR_SAFE=$(echo "${COMMIT_AUTHOR}" | tr -d '"\\\\<>')
                         APP_NAME_SAFE=$(echo "$APP_NAME" | tr -d '"\\<>')
                         TITLE="${APP_NAME_SAFE} | ${TARGET_ENV} | EFECTIVO"
-                        SUCCESS_MSG="✅ Build efectivo - Resuelto por: ${COMMIT_AUTHOR_SAFE}"
+                        SUCCESS_MSG="Build efectivo - Resuelto por: ${COMMIT_AUTHOR_SAFE}"
 
                         PAYLOAD=$(cat <<EOF
 {
@@ -862,6 +867,16 @@ EOF
                 script {
                     sh '''
                         set +e
+                        GAP_SECONDS="${NOTIFICATION_GAP_SECONDS}"
+                        case "$GAP_SECONDS" in
+                            ''|*[!0-9]*) GAP_SECONDS=20 ;;
+                        esac
+
+                        if [ "$GAP_SECONDS" -gt 0 ]; then
+                            echo "Waiting ${GAP_SECONDS}s before completed notification..."
+                            sleep "$GAP_SECONDS"
+                        fi
+
                         TARGET_ENV=$(echo "${BRANCH_NAME#origin/}" | tr '[:lower:]' '[:upper:]')
                         [ -n "$TARGET_ENV" ] || TARGET_ENV="QA"
 
@@ -930,7 +945,7 @@ EOF
                     fi
 
                     ERROR_MESSAGE="Build #${BUILD_NUMBER} failed on ${BRANCH_NAME} (commit: ${INCIDENT_COMMIT}). See: ${BUILD_URL}"
-                    TEAMS_MESSAGE="❌ Build fallido - Revisar logs del pipeline"
+                    TEAMS_MESSAGE="Build fallido - Revisar logs del pipeline"
 
                     echo "Error: $ERROR_MESSAGE"
 
