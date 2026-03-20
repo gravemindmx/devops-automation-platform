@@ -344,6 +344,78 @@ except Exception:
                                         terraform import -input=false "$ALB_TF_ADDR" "$EXISTING_ALB_ARN" || true
                                     fi
                                 fi
+
+                                ALB_LISTENER_TF_ADDR="module.jenkins.aws_lb_listener.jenkins_http_public[0]"
+                                if ! terraform state show "$ALB_LISTENER_TF_ADDR" >/dev/null 2>&1; then
+                                    if [ -z "$EXISTING_ALB_ARN" ] || [ "$EXISTING_ALB_ARN" = "None" ]; then
+                                        ALB_NAME="devops-platform-alb"
+                                        EXISTING_ALB_ARN=$(aws elbv2 describe-load-balancers \
+                                            --region "${AWS_REGION}" \
+                                            --names "$ALB_NAME" \
+                                            --query 'LoadBalancers[0].LoadBalancerArn' \
+                                            --output text 2>/dev/null || true)
+                                    fi
+
+                                    if [ -n "$EXISTING_ALB_ARN" ] && [ "$EXISTING_ALB_ARN" != "None" ]; then
+                                        EXISTING_LISTENER_ARN=$(aws elbv2 describe-listeners \
+                                            --region "${AWS_REGION}" \
+                                            --load-balancer-arn "$EXISTING_ALB_ARN" \
+                                            --query 'Listeners[?Port==`80` && Protocol==`HTTP`].ListenerArn | [0]' \
+                                            --output text 2>/dev/null || true)
+
+                                        if [ -n "$EXISTING_LISTENER_ARN" ] && [ "$EXISTING_LISTENER_ARN" != "None" ]; then
+                                            echo "Importing existing ALB HTTP listener into Terraform state"
+                                            terraform import -input=false "$ALB_LISTENER_TF_ADDR" "$EXISTING_LISTENER_ARN" || true
+                                        fi
+                                    fi
+                                fi
+                            fi
+
+                            LAMBDA_PERMISSION_TF_ADDR="module.api.aws_lambda_permission.apigateway_invoke"
+                            if ! terraform state show "$LAMBDA_PERMISSION_TF_ADDR" >/dev/null 2>&1; then
+                                if aws lambda get-policy --function-name "${LAMBDA_FUNCTION}" --region "${AWS_REGION}" >/tmp/lambda-policy.json 2>/dev/null; then
+                                    if grep -q 'AllowAPIGatewayInvoke' /tmp/lambda-policy.json; then
+                                        echo "Importing existing Lambda API Gateway permission into Terraform state"
+                                        terraform import -input=false "$LAMBDA_PERMISSION_TF_ADDR" "${LAMBDA_FUNCTION}/AllowAPIGatewayInvoke" || true
+                                    fi
+                                fi
+                            fi
+
+                            API_INTEGRATION_TF_ADDR="module.api.aws_apigatewayv2_integration.lambda"
+                            API_ROUTE_TF_ADDR="module.api.aws_apigatewayv2_route.notify"
+                            API_NAME="devops-platform-webhook-api"
+
+                            EXISTING_API_ID=$(aws apigatewayv2 get-apis \
+                                --region "${AWS_REGION}" \
+                                --query "Items[?Name=='${API_NAME}'].ApiId | [0]" \
+                                --output text 2>/dev/null || true)
+
+                            if [ -n "$EXISTING_API_ID" ] && [ "$EXISTING_API_ID" != "None" ]; then
+                                if ! terraform state show "$API_INTEGRATION_TF_ADDR" >/dev/null 2>&1; then
+                                    EXISTING_INTEGRATION_ID=$(aws apigatewayv2 get-integrations \
+                                        --region "${AWS_REGION}" \
+                                        --api-id "$EXISTING_API_ID" \
+                                        --query "Items[?contains(IntegrationUri, ':function:${LAMBDA_FUNCTION}')].IntegrationId | [0]" \
+                                        --output text 2>/dev/null || true)
+
+                                    if [ -n "$EXISTING_INTEGRATION_ID" ] && [ "$EXISTING_INTEGRATION_ID" != "None" ]; then
+                                        echo "Importing existing API integration into Terraform state"
+                                        terraform import -input=false "$API_INTEGRATION_TF_ADDR" "${EXISTING_API_ID}/${EXISTING_INTEGRATION_ID}" || true
+                                    fi
+                                fi
+
+                                if ! terraform state show "$API_ROUTE_TF_ADDR" >/dev/null 2>&1; then
+                                    EXISTING_ROUTE_ID=$(aws apigatewayv2 get-routes \
+                                        --region "${AWS_REGION}" \
+                                        --api-id "$EXISTING_API_ID" \
+                                        --query "Items[?RouteKey=='POST /notify'].RouteId | [0]" \
+                                        --output text 2>/dev/null || true)
+
+                                    if [ -n "$EXISTING_ROUTE_ID" ] && [ "$EXISTING_ROUTE_ID" != "None" ]; then
+                                        echo "Importing existing API route into Terraform state"
+                                        terraform import -input=false "$API_ROUTE_TF_ADDR" "${EXISTING_API_ID}/${EXISTING_ROUTE_ID}" || true
+                                    fi
+                                fi
                             fi
 
                             terraform plan -input=false -var-file=terraform.tfvars -out=tfplan
