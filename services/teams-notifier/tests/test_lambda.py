@@ -81,6 +81,33 @@ def test_send_teams_notification_accepts_202_status():
     assert result is True
 
 
+def test_send_teams_notification_builds_hybrid_payload_for_flow_compatibility():
+    event = {
+        "event_type": "build_in_progress",
+        "status": "EN_PROCESO",
+        "title": "mi-app | QA | EN PROCESO",
+        "build_number": "101",
+    }
+
+    with patch.object(
+        teams_lambda.http,
+        "request",
+        return_value=SimpleNamespace(status=200, data=b""),
+    ) as mocked_http:
+        with patch.object(
+            teams_lambda,
+            "TEAMS_WEBHOOK",
+            "https://example.powerplatform.com/general-flow",
+        ):
+            result = teams_lambda.send_teams_notification(event)
+
+    assert result is True
+    sent_body = mocked_http.call_args.kwargs["body"]
+    assert '"body": {' in sent_body
+    assert '"text": "' in sent_body
+    assert '"summary": "mi-app | QA | EN PROCESO"' in sent_body
+
+
 def test_build_notification_title_uses_app_and_environment():
     payload = {
         "event_type": "build_in_progress",
@@ -147,3 +174,5 @@ def test_send_teams_notification_uses_failure_webhook_for_failed_status():
 
     assert result is True
     assert mocked_http.call_args.args[1] == "https://example.powerplatform.com/failure-flow"
+    sent_body = mocked_http.call_args.kwargs["body"]
+    assert '"body": {' in sent_body

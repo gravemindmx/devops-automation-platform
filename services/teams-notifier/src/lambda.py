@@ -482,6 +482,25 @@ def _target_webhook(payload: Dict[str, Any]) -> str:
     return TEAMS_WEBHOOK
 
 
+def _build_outbound_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Build webhook payload compatible with both direct and wrapped-flow triggers."""
+
+    outbound = dict(payload)
+    text_value = outbound.get("text") or to_plain_text_message(payload).get("text", "")
+
+    if text_value:
+        outbound.setdefault("text", text_value)
+
+    if "summary" not in outbound:
+        outbound["summary"] = str(outbound.get("title") or text_value or "DevOps Notification")
+
+    # Some Power Automate templates resolve values via triggerBody()['body'][...].
+    if not isinstance(outbound.get("body"), dict):
+        outbound["body"] = dict(payload)
+
+    return outbound
+
+
 def send_teams_notification(payload: Dict) -> bool:
     """Send notification to Microsoft Teams"""
     
@@ -498,12 +517,13 @@ def send_teams_notification(payload: Dict) -> bool:
             parsed.netloc,
             parsed.path[:48] + ("..." if len(parsed.path) > 48 else "")
         )
-        logger.info(f"Sending Teams notification: {json.dumps(payload)}")
+        outbound_payload = _build_outbound_payload(payload)
+        logger.info(f"Sending Teams notification: {json.dumps(outbound_payload)}")
         
         response = http.request(
             'POST',
             webhook_url,
-            body=json.dumps(payload),
+            body=json.dumps(outbound_payload),
             headers={'Content-Type': 'application/json'},
             timeout=urllib3.Timeout(connect=5.0, read=10.0)
         )
