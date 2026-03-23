@@ -1,0 +1,40 @@
+# Template: copy this file to each application repository as .ci/config.yml
+# Purpose: enable automatic onboarding for organization-level Jenkins discovery.
+
+version: 1
+
+ci:
+  enabled: true
+  owner: "your-org"
+  repository: "your-repo"
+
+triggers:
+  branches:
+    include:
+    - "qa"
+  events:
+    include:
+    - "push"
+
+build:
+  strategy: "auto-detect" # auto-detect | custom
+  command: "" # only used when strategy=custom
+
+test:
+  required: true
+  command: "python -m unittest -v"
+
+notifications:
+  teams:
+    enabled: true
+    states:
+    - "EN_PROCESO"
+    - "FALLIDO"
+    - "EFECTIVO"
+    - "COMPLETADO"
+
+policies:
+  allow_non_promotion_branch: false
+  promotion_branches:
+  - "qa"
+  - "prod"

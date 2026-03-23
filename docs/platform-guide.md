@@ -451,6 +451,123 @@ GitHub (si usas Organization Folder):
 
 ---
 
+## 3.12 Inicio de Piloto Organizacional (GitHub Organization)
+
+Esta sección define por dónde empezar para pasar de piloto por repo a operación por organización completa sin romper el flujo actual.
+
+### Objetivo de la fase inicial
+
+1. Descubrir repos automáticamente desde Jenkins.
+2. Ejecutar CI solo en repos onboarded.
+3. Mantener notificaciones Teams con los mismos estados operativos:
+    - `EN_PROCESO`
+    - `FALLIDO`
+    - `EFECTIVO`
+    - `COMPLETADO`
+
+### Criterio de inclusión recomendado (fase 1)
+
+1. Repositorio no archivado.
+2. Rama objetivo `qa`.
+3. Topic opcional para control gradual, por ejemplo `ci-enabled`.
+4. Presencia de archivo de onboarding `.ci/config.yml` (basado en template).
+
+Template de referencia para onboarding por repo:
+
+- `docs/ci-config-template.yml`
+
+### Checklist de implementación (orden recomendado)
+
+1. Crear/validar credencial GitHub App con alcance de organización en Jenkins.
+2. Crear `Organization Folder` en Jenkins.
+3. Configurar descubrimiento de repos (incluir solo repos habilitados para piloto).
+4. Configurar branch discovery para `qa`.
+5. Definir regla de onboarding por archivo `.ci/config.yml`.
+6. Ejecutar `Scan Organization Now`.
+7. Seleccionar 3 repos reales para piloto (ej. Python, Node y Terraform).
+8. Validar por repo:
+    - checkout
+    - build/test
+    - notificaciones Teams por fase
+9. Expandir gradualmente por topic/repositorio una vez estabilizado.
+
+### Criterios de aceptación del piloto organizacional
+
+1. Descubrimiento automático exitoso de repos permitidos.
+2. Ejecución CI en repos onboarded sin configuración manual por repo en Jenkins.
+3. Notificaciones Teams consistentes por estado y contexto (`org/repo/branch/commit`).
+4. Fallas con mensaje útil y URL de build.
+5. Repos no onboarded claramente marcados (sin ejecución destructiva).
+
+### Riesgos y mitigaciones
+
+1. Ruido por repos no listos.
+    - Mitigación: filtro por topic + `.ci/config.yml`.
+2. Diferentes stacks por repo.
+    - Mitigación: estrategia `auto-detect` y fallback con mensaje de onboarding pendiente.
+3. Condiciones de carrera en infraestructura Terraform.
+    - Mitigación: mantener `APPLY_TERRAFORM=false` para pipelines de repos app y reservar infra a un job dedicado.
+
+### Plan ejecutable (Día 1 a Día 3)
+
+#### Día 1 - Preparación y gobierno
+
+1. Confirmar owner de organización y repos iniciales del piloto (3 repos).
+2. Crear topic de habilitación, por ejemplo `ci-enabled`.
+3. Definir ramas válidas iniciales (`qa`).
+4. Confirmar evento inicial (`push`).
+5. Crear checklist de onboarding por repo:
+    - topic `ci-enabled`
+    - archivo `.ci/config.yml`
+    - comando de test válido
+6. Criterio de salida Día 1:
+    - reglas de inclusión aprobadas
+    - lista de repos piloto cerrada
+
+#### Día 2 - Integración Jenkins + GitHub Organization
+
+1. Configurar credencial GitHub App en Jenkins.
+2. Crear `Organization Folder` para la organización objetivo.
+3. Configurar descubrimiento:
+    - excluir archivados/forks
+    - incluir solo repos con topic `ci-enabled`
+4. Configurar branch discovery para `qa`.
+5. Ejecutar `Scan Organization Now`.
+6. Verificar que Jenkins detecta los 3 repos piloto.
+7. Criterio de salida Día 2:
+    - jobs visibles por repo piloto
+    - checkout exitoso en `qa`
+
+#### Día 3 - Validación E2E y cierre del piloto
+
+1. Ejecutar commit de prueba exitoso por cada repo piloto.
+2. Ejecutar fallo controlado en al menos 1 repo piloto.
+3. Validar notificaciones Teams por fase:
+    - `EN_PROCESO`
+    - `FALLIDO`
+    - `EFECTIVO`
+    - `COMPLETADO`
+4. Validar metadatos mínimos por mensaje:
+    - org/repo
+    - branch
+    - commit
+    - build URL
+5. Documentar incidencias y ajustes pendientes.
+6. Criterio de salida Día 3:
+    - piloto estable
+    - checklist de expansión aprobado
+
+#### Expansión posterior (semana siguiente)
+
+1. Ampliar por lotes de repos usando topic `ci-enabled`.
+2. Mantener revisión diaria de fallos/no-onboarded.
+3. Activar métricas operativas:
+    - tiempo medio de pipeline
+    - tasa de éxito/fallo
+    - latencia de notificación Teams
+
+---
+
 ## 3.10 Setup con dos repositorios (Solo Jenkins)
 
 Aplica cuando tienes un repo de plataforma (este proyecto) y un repo de aplicación separado.
